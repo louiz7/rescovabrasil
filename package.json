@@ -1,0 +1,42 @@
+{
+  "name": "rescova-br",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "server": "node --experimental-sqlite --env-file-if-exists=.env server/index.mjs",
+    "build": "vite build",
+    "start": "node --experimental-sqlite --env-file-if-exists=.env server/index.mjs",
+    "test": "node --experimental-sqlite --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "maintenance": "node --experimental-sqlite --env-file-if-exists=.env scripts/maintenance.mjs",
+    "benchmark": "node --experimental-sqlite scripts/benchmark.mjs",
+    "format": "prettier --write src server scripts tests *.mjs *.json",
+    "format:check": "prettier --check src server scripts tests *.mjs *.json"
+  },
+  "dependencies": {
+    "exceljs": "4.4.0",
+    "express": "5.2.1",
+    "lucide-react": "0.462.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@vitejs/plugin-react": "4.7.0",
+    "prettier": "3.9.6",
+    "vite": "6.4.3"
+  },
+  "overrides": {
+    "postcss": "8.5.28",
+    "rollup": "4.60.4",
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
+  }
+}

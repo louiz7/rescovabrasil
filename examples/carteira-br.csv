@@ -1,0 +1,7 @@
+referencia;nome;telefone;email;saldo;moeda;vencimento;fuso
+EXEMPLO-001;Ana Exemplo;(11) 99900-1001;ana@example.invalid;1.234,56;BRL;15/04/2026;America/Sao_Paulo
+EXEMPLO-002;Bruno Exemplo;;bruno@example.invalid;890,00;BRL;20/05/2026;America/Sao_Paulo
+EXEMPLO-003;Carla Exemplo;+5511999001003;;450,50;BRL;01/06/2026;America/Sao_Paulo
+EXEMPLO-004;Diego Exemplo;telefone inválido;email inválido;abc;BRL;31/02/2026;America/Sao_Paulo
+EXEMPLO-001;Ana Duplicada;(11) 99900-1001;ana@example.invalid;1.234,56;BRL;15/04/2026;America/Sao_Paulo
+EXEMPLO-005;Elisa Exemplo;+5511999001005;;;BRL;;America/Manaus

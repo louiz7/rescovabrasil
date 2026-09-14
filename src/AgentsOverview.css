@@ -1,0 +1,235 @@
+.agents-grid {
+  align-items: start;
+  margin-top: 20px;
+}
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.agent-card-footer {
+  margin-top: auto;
+  padding-top: 18px;
+}
+.agent-card-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 18px;
+  padding: 15px 0;
+  border-top: 1px solid #edf0ea;
+  border-bottom: 1px solid #edf0ea;
+}
+.agent-card-stats > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 5px;
+  padding: 0 16px;
+  border-left: 1px solid #edf0ea;
+}
+.agent-card-stats > div:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+.agent-card-stats > div:last-child {
+  padding-right: 0;
+}
+.agent-card-stats dt {
+  color: #7d8878;
+  font-size: 11px;
+  text-transform: capitalize;
+  line-height: 1.4;
+}
+.agent-card-stats dd {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  color: #293e33;
+  font-variant-numeric: tabular-nums;
+}
+.agent-card-stats .has-failures dd {
+  color: #b35442;
+}
+.agent-card details.agent-card-details {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.agent-card-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  padding: 12px 14px;
+  min-height: 44px;
+  background: #f7f8f4;
+  color: #526747;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.agent-card-details > summary::-webkit-details-marker {
+  display: none;
+}
+.agent-card-details > summary:hover {
+  color: #253b2f;
+  background: #f0f3ec;
+}
+.agent-card-details > summary:focus-visible {
+  outline: 2px solid #809c64;
+  outline-offset: 5px;
+}
+.agent-card-details > summary > svg {
+  color: #889a7c;
+  transition: transform 0.18s ease;
+  flex-shrink: 0;
+}
+.agent-card-details[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.agent-card-detail-body {
+  display: grid;
+  gap: 22px;
+  padding: 20px 14px 2px;
+}
+.agent-card-detail-body h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  font-size: 10px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: #85927b;
+  font-weight: 600;
+}
+.agent-card-detail-body h3 > span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: #f0f4eb;
+  letter-spacing: 0;
+  color: #738762;
+}
+.agent-card .agent-capability-list,
+.agent-card .agent-recent-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.agent-capability-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+.agent-capability-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #51624b;
+}
+.agent-capability-list svg {
+  color: #8ca478;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.agent-work-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f7f8f4;
+}
+.agent-work-empty > svg {
+  color: #a0af91;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.agent-work-empty strong {
+  color: #69795f;
+  font-size: 12px;
+  font-weight: 500;
+}
+.agent-work-empty p {
+  margin: 4px 0 0;
+  color: #8d9885;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.agent-recent-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid #edf0ea;
+}
+.agent-recent-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.agent-run-dot {
+  width: 6px;
+  height: 6px;
+  background: #8aa478;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.agent-run-dot.failed {
+  background: #bc7c69;
+}
+.agent-run-dot.running {
+  background: #bca360;
+}
+.agent-recent-list li > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.agent-recent-list strong {
+  text-transform: capitalize;
+  font-size: 12px;
+  color: #52634a;
+  font-weight: 500;
+}
+.agent-recent-list li > div > span {
+  font-size: 10px;
+  color: #8a9681;
+  overflow-wrap: anywhere;
+}
+.agent-recent-list time {
+  margin-left: auto;
+  font-size: 10px;
+  color: #8a9681;
+  text-align: right;
+  line-height: 1.5;
+}
+@media (max-width: 600px) {
+  .agent-card-stats > div {
+    padding: 0 10px;
+  }
+  .agent-card-stats dd {
+    font-size: 20px;
+  }
+  .agent-card-stats dt {
+    font-size: 10px;
+  }
+  .agent-capability-list {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-card-details > summary > svg {
+    transition: none;
+  }
+}

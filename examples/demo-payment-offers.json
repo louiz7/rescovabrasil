@@ -1,0 +1,46 @@
+[
+  {
+    "offerId": "upfront_10_percent",
+    "label": "Pay today with a 10% discount",
+    "currency": "BRL",
+    "totalMinor": 112500,
+    "discountPercent": 10,
+    "interestPercent": 0,
+    "expiresInDays": 0,
+    "demo": true,
+    "installments": [{ "amountMinor": 112500, "dueInDays": 0, "monthOffset": 0 }]
+  },
+  {
+    "offerId": "three_installments",
+    "label": "3 monthly installments, no interest",
+    "currency": "BRL",
+    "totalMinor": 125000,
+    "discountPercent": 0,
+    "interestPercent": 0,
+    "expiresInDays": 7,
+    "demo": true,
+    "installments": [
+      { "amountMinor": 41667, "dueInDays": 7, "monthOffset": 0 },
+      { "amountMinor": 41667, "dueInDays": 7, "monthOffset": 1 },
+      { "amountMinor": 41666, "dueInDays": 7, "monthOffset": 2 }
+    ]
+  },
+  {
+    "offerId": "six_installments",
+    "label": "6 monthly installments, no interest",
+    "currency": "BRL",
+    "totalMinor": 125000,
+    "discountPercent": 0,
+    "interestPercent": 0,
+    "expiresInDays": 7,
+    "demo": true,
+    "installments": [
+      { "amountMinor": 20834, "dueInDays": 7, "monthOffset": 0 },
+      { "amountMinor": 20834, "dueInDays": 7, "monthOffset": 1 },
+      { "amountMinor": 20833, "dueInDays": 7, "monthOffset": 2 },
+      { "amountMinor": 20833, "dueInDays": 7, "monthOffset": 3 },
+      { "amountMinor": 20833, "dueInDays": 7, "monthOffset": 4 },
+      { "amountMinor": 20833, "dueInDays": 7, "monthOffset": 5 }
+    ]
+  }
+]

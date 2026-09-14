@@ -1,0 +1,102 @@
+.agent-conversations {
+  display: grid;
+  gap: 18px;
+}
+.agent-conversation-heading,
+.agent-conversation-actions,
+.agent-message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.agent-conversation-heading h3 {
+  margin: 0 0 6px;
+}
+.agent-conversation-status {
+  font-size: 12px;
+  text-transform: capitalize;
+  color: #586c69;
+}
+.agent-conversation-actions button,
+.agent-reply button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.agent-message-list {
+  list-style: none;
+  padding: 16px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 420px;
+  min-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #e4eae7;
+  border-radius: 12px;
+  background: #fafbf9;
+}
+.agent-message {
+  width: 85%;
+  border-radius: 12px;
+  padding: 13px 15px;
+  border: 1px solid #e0e8e2;
+}
+.agent-message.outbound {
+  align-self: flex-start;
+  background: #edf5ef;
+}
+.agent-message.inbound {
+  align-self: flex-end;
+  background: #fff;
+}
+.agent-message-meta {
+  font-size: 11px;
+  color: #536b61;
+}
+.agent-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 10px 0;
+  line-height: 1.55;
+}
+.agent-message-delivery {
+  font-size: 10px;
+  color: #617269;
+}
+.agent-reply {
+  display: grid;
+  gap: 10px;
+}
+.agent-reply button {
+  justify-self: end;
+}
+.agent-conversation-progress {
+  margin: 0;
+  font-size: 13px;
+  color: #47674d;
+}
+.agent-workflow-details {
+  border-top: 1px solid #e4eae7;
+  padding-top: 14px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.agent-workflow-details summary {
+  cursor: pointer;
+  color: #536b61;
+}
+.agent-workflow-details li {
+  margin: 8px 0;
+}
+@media (max-width: 600px) {
+  .agent-message {
+    width: 95%;
+  }
+  .agent-message-list {
+    padding: 9px;
+  }
+}

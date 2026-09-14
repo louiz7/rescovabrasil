@@ -1,0 +1,92 @@
+.twilio-phone-test {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.twilio-phone-test .info-box {
+  margin: 0;
+}
+.phone-test-config,
+.phone-test-sample,
+.phone-test-call {
+  padding: 18px;
+  border: 1px solid #dfe5d8;
+  border-radius: 12px;
+}
+.phone-test-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.phone-test-section-title h3,
+.phone-test-sample h3 {
+  margin: 0;
+}
+.phone-test-checks {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0;
+}
+.phone-test-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+}
+.phone-test-checks li > div {
+  flex: 1;
+}
+.phone-test-checks small {
+  display: block;
+  margin-top: 5px;
+  color: #687261;
+  overflow-wrap: anywhere;
+}
+.phone-test-checks li > span:last-child {
+  font-size: 12px;
+}
+.phone-check-ready {
+  color: #246348;
+}
+.phone-check-missing {
+  color: #ad702a;
+}
+.phone-test-sample {
+  background: #f7f8f4;
+}
+.phone-test-sample dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.phone-test-sample dt {
+  font-size: 12px;
+  color: #70796d;
+  margin-bottom: 5px;
+}
+.phone-test-sample dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.phone-test-url {
+  overflow-wrap: anywhere;
+}
+.phone-test-actions {
+  display: flex;
+  gap: 12px;
+}
+.voice-test-entry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+@media (max-width: 600px) {
+  .phone-test-sample dl {
+    grid-template-columns: 1fr;
+  }
+  .phone-test-section-title {
+    flex-wrap: wrap;
+  }
+}
