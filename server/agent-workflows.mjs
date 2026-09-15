@@ -1,8 +1,12 @@
 import express from 'express';
+import { createHash } from 'node:crypto';
+import { datedDemoPaymentOffers } from './demo-payment.mjs';
+import { createDocumentLibrary } from './documents.mjs';
 import { id, now, one, all, run, transaction, event, task } from './db.mjs';
 import { assert } from './domain.mjs';
 import { recordOutcome } from './service.mjs';
 
+const resolutionStates = new Set(['awaiting_information', 'awaiting_specialist', 'blocked_policy']);
 const demoReview = 'Review demo payment agreement and prepare payment follow-up';
 const stoppedOutcomes = new Set([
   'opt_out',
@@ -12,6 +16,7 @@ const stoppedOutcomes = new Set([
   'paid_reported',
 ]);
 export function createAgentWorkflows(db, config, { runAgent } = {}) {
+  const library = createDocumentLibrary(db, config);
   db.exec(`CREATE TABLE IF NOT EXISTS agent_source_ends (
     provider TEXT NOT NULL, session_id TEXT NOT NULL, ended_at TEXT NOT NULL, PRIMARY KEY(provider,session_id));
     CREATE TABLE IF NOT EXISTS agent_conversations (
@@ -31,6 +36,15 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
     status TEXT NOT NULL, model TEXT, provider TEXT, usage_json TEXT, error TEXT, created_at TEXT NOT NULL, completed_at TEXT);
     CREATE TABLE IF NOT EXISTS agent_workflow_events (
     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, created_at TEXT NOT NULL);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS agent_resolutions (
+    conversation_id TEXT PRIMARY KEY, status TEXT NOT NULL, reason TEXT NOT NULL,
+    next_action TEXT NOT NULL, context_json TEXT NOT NULL, fingerprint TEXT, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS agent_escalations (
+      id TEXT PRIMARY KEY, dedupe_key TEXT NOT NULL UNIQUE, conversation_id TEXT NOT NULL REFERENCES agent_conversations(id),
+      trigger TEXT NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL, next_action TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS agent_message_documents (
+    message_id TEXT NOT NULL, document_id TEXT NOT NULL, PRIMARY KEY(message_id,document_id));`);
   // A model invocation has no external side effect; interrupted generation is safe to retry.
   run(db, "UPDATE agent_jobs SET status='queued' WHERE status='running'");
   run(
@@ -71,15 +85,170 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       now(),
     );
   }
+  function resolution(c) {
+    const r = one(db, 'SELECT * FROM agent_resolutions WHERE conversation_id=?', c.id);
+    return r
+      ? {
+          status: r.status,
+          reason: r.reason,
+          nextAction: r.next_action,
+          owner: 'supervisor',
+          updatedAt: r.updated_at,
+        }
+      : null;
+  }
+  function trackEscalation(c, trigger, reason, key) {
+    const escalationId = id();
+    run(
+      db,
+      'INSERT OR IGNORE INTO agent_escalations VALUES (?,?,?,?,?,?,?,?,?)',
+      escalationId,
+      key,
+      c.id,
+      trigger,
+      reason.slice(0, 1000),
+      'queued',
+      'Rafael will inspect the case.',
+      now(),
+      now(),
+    );
+    return one(db, 'SELECT id FROM agent_escalations WHERE dedupe_key=?', key).id;
+  }
+  function saveResolution(c, status, reason, nextAction, context = {}, fingerprint = null) {
+    run(
+      db,
+      'INSERT INTO agent_resolutions VALUES (?,?,?,?,?,?,?) ON CONFLICT(conversation_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,next_action=excluded.next_action,context_json=excluded.context_json,fingerprint=excluded.fingerprint,updated_at=excluded.updated_at',
+      c.id,
+      status,
+      reason.slice(0, 1000),
+      nextAction.slice(0, 1000),
+      JSON.stringify(context),
+      fingerprint,
+      now(),
+    );
+    const escalationId = context.escalationId;
+    if (escalationId)
+      run(
+        db,
+        'UPDATE agent_escalations SET status=?,next_action=?,updated_at=? WHERE id=? AND conversation_id=?',
+        status,
+        nextAction.slice(0, 1000),
+        now(),
+        escalationId,
+        c.id,
+      );
+    log(c.id, 'supervisor.' + status, { reason, nextAction, owner: 'supervisor', escalationId });
+  }
+  function referSupervisor(c, job, reason, extra = {}) {
+    const trigger = extra.missingDocument
+      ? 'missing_document'
+      : extra.paymentReported
+        ? 'payment_report'
+        : 'marina_uncertainty';
+    const context = {
+      reason,
+      ...extra,
+      escalationId: extra.escalationId || trackEscalation(c, trigger, reason, `job:${job.id}`),
+    };
+    saveResolution(
+      c,
+      'queued',
+      reason,
+      'Rafael will inspect the current case and decide the next action.',
+      context,
+    );
+    enqueue(c, 'supervisor_review', `supervisor:${job.id}`);
+    run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+  }
+  function waitForResolution(c, job, status, reason, text, context = {}) {
+    // Waiting work has a durable owner and trigger; no human task is created.
+    run(
+      db,
+      'UPDATE agent_conversations SET status=?,version=version+1,updated_at=? WHERE id=?',
+      status,
+      now(),
+      c.id,
+    );
+    run(
+      db,
+      "UPDATE agent_jobs SET status='cancelled',error='Superseded by case resolution' WHERE conversation_id=? AND status IN ('queued','waiting_source_end')",
+      c.id,
+    );
+    run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+    const nextAction =
+      status === 'awaiting_information'
+        ? 'Await missing case information or documents; recheck when evidence changes or the participant replies.'
+        : status === 'awaiting_specialist'
+          ? 'Await the required specialist capability or verified external result; recheck when case context changes.'
+          : 'Keep the restriction in place until policy or authorized capabilities change; recheck explicitly.';
+    saveResolution(
+      c,
+      status,
+      reason,
+      nextAction,
+      context,
+      loadContext({ ...c, status: 'active' }).snapshot,
+    );
+    if (text)
+      run(
+        db,
+        'INSERT OR IGNORE INTO agent_messages VALUES (?,?,?,?,?,?,?)',
+        id(),
+        c.id,
+        'outbound',
+        text,
+        'simulated_delivered',
+        `job:${job.id}`,
+        now(),
+      );
+    event(
+      db,
+      c.case_id,
+      'agent_resolution_waiting',
+      { status, reason, owner: 'supervisor', nextAction },
+      'agent',
+    );
+  }
+  function wakeResolution(c, key) {
+    const previous = one(db, 'SELECT * FROM agent_resolutions WHERE conversation_id=?', c.id);
+    if (
+      previous?.fingerprint &&
+      previous.fingerprint !== loadContext({ ...c, status: 'active' }).snapshot
+    ) {
+      const context = JSON.parse(previous.context_json);
+      delete context.missingDocument;
+      delete context.attemptedDocumentKinds;
+      run(
+        db,
+        'UPDATE agent_resolutions SET context_json=? WHERE conversation_id=?',
+        JSON.stringify(context),
+        c.id,
+      );
+    }
+
+    run(
+      db,
+      "UPDATE agent_conversations SET status='active',version=version+1,updated_at=? WHERE id=?",
+      now(),
+      c.id,
+    );
+    run(
+      db,
+      "UPDATE agent_resolutions SET status='queued',updated_at=? WHERE conversation_id=?",
+      now(),
+      c.id,
+    );
+    run(
+      db,
+      "UPDATE agent_escalations SET status='queued',updated_at=? WHERE conversation_id=? AND status NOT IN ('resolved','cancelled')",
+      now(),
+      c.id,
+    );
+    enqueue(c, 'supervisor_review', key);
+    log(c.id, 'supervisor.recheck_requested', { trigger: key });
+  }
   function agreementSaved({ provider, sessionId, caseId, agreementId }) {
     assert(config.mode === 'demo', 'Virtual SMS is available only in demo mode.', 403);
-    const previous = one(
-      db,
-      'SELECT * FROM agent_conversations WHERE provider=? AND session_id=?',
-      provider,
-      sessionId,
-    );
-    if (previous) return { conversationId: previous.id };
     const stored = one(
       db,
       'SELECT * FROM demo_voice_results WHERE provider=? AND session_id=? AND case_id=? AND agreement_id=?',
@@ -92,6 +261,38 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       stored && JSON.parse(stored.agreement_json).demo === true,
       'An accepted demo agreement is required.',
     );
+    const previous = one(
+      db,
+      'SELECT * FROM agent_conversations WHERE provider=? AND session_id=?',
+      provider,
+      sessionId,
+    );
+    if (previous) {
+      assert(previous.case_id === caseId, 'Source case mismatch.', 409);
+      if (previous.agreement_id === agreementId) return { conversationId: previous.id };
+      assert(!previous.agreement_id, 'Conversation already has another agreement.', 409);
+      run(
+        db,
+        'UPDATE agent_conversations SET agreement_id=?,version=version+1,updated_at=? WHERE id=?',
+        agreementId,
+        now(),
+        previous.id,
+      );
+      log(previous.id, 'agreement.accepted', { agreementId });
+      const ended = one(
+        db,
+        'SELECT 1 FROM agent_source_ends WHERE provider=? AND session_id=?',
+        provider,
+        sessionId,
+      );
+      enqueue(
+        previous,
+        'agreement_followup',
+        `agreement:${provider}:${sessionId}`,
+        ended ? 'queued' : 'waiting_source_end',
+      );
+      return { conversationId: previous.id };
+    }
     const c = { id: id() },
       ended = one(
         db,
@@ -121,6 +322,78 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
     log(c.id, ended ? 'handoff.ready' : 'handoff.waiting_for_call_end');
     return { conversationId: c.id };
   }
+  function documentRequested({ provider, sessionId, caseId, kind, requestId }) {
+    assert(
+      config.mode === 'demo' && config.agentWorkflowsEnabled !== false,
+      'Demo document workflows are disabled.',
+      403,
+    );
+    return transaction(db, () => {
+      let c = one(
+        db,
+        'SELECT * FROM agent_conversations WHERE provider=? AND session_id=?',
+        provider,
+        sessionId,
+      );
+      if (!c) {
+        assert(
+          one(
+            db,
+            'SELECT 1 FROM demo_voice_cases WHERE provider=? AND session_id=? AND case_id=?',
+            provider,
+            sessionId,
+            caseId,
+          ),
+          'Demo source not found.',
+          404,
+        );
+        run(
+          db,
+          'INSERT INTO agent_conversations (id,case_id,agreement_id,provider,session_id,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
+          id(),
+          caseId,
+          '',
+          provider,
+          sessionId,
+          'active',
+          now(),
+          now(),
+        );
+        c = one(
+          db,
+          'SELECT * FROM agent_conversations WHERE provider=? AND session_id=?',
+          provider,
+          sessionId,
+        );
+      }
+      assert(
+        c.case_id === caseId && c.status === 'active',
+        'Conversation cannot accept this document request.',
+        409,
+      );
+      const request = library.request({ caseId, kind, requestId });
+      const ended = one(
+        db,
+        'SELECT 1 FROM agent_source_ends WHERE provider=? AND session_id=?',
+        provider,
+        sessionId,
+      );
+      enqueue(
+        c,
+        'document_followup',
+        `document:${request.id}`,
+        ended ? 'queued' : 'waiting_source_end',
+      );
+      log(c.id, 'document.requested', { requestId: request.id, kind, role: 'document_librarian' });
+      return {
+        caseId,
+        conversationId: c.id,
+        documentRequestId: request.id,
+        transport: 'virtual_sms',
+        startsAfter: 'call_end',
+      };
+    });
+  }
   function sourceEnded(provider, sessionId) {
     if (closing || config.mode !== 'demo') return;
     transaction(db, () => {
@@ -145,6 +418,13 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
   function stop(c, status, reason) {
     run(
       db,
+      "UPDATE document_requests SET status='cancelled',error=? WHERE case_id=? AND status IN ('pending','ready') AND NOT EXISTS (SELECT 1 FROM agent_message_documents a JOIN agent_messages m ON m.id=a.message_id WHERE a.document_id=document_requests.document_id AND m.conversation_id=?)",
+      reason,
+      c.case_id,
+      c.id,
+    );
+    run(
+      db,
       'UPDATE agent_conversations SET status=?,version=version+1,updated_at=? WHERE id=?',
       status,
       now(),
@@ -154,6 +434,13 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       db,
       "UPDATE agent_jobs SET status='cancelled',error=? WHERE conversation_id=? AND status IN ('waiting_source_end','queued','running','failed')",
       reason,
+      c.id,
+    );
+    run(
+      db,
+      "UPDATE agent_escalations SET status='cancelled',next_action=?,updated_at=? WHERE conversation_id=? AND status NOT IN ('resolved','cancelled')",
+      reason,
+      now(),
       c.id,
     );
     log(c.id, `conversation.${status}`, { reason });
@@ -166,18 +453,81 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       caseId,
     );
   }
-  function outcomeChanged({ provider, sessionId, args, outcome } = {}) {
+  function outcomeChanged({ provider, sessionId, caseId, args, outcome } = {}) {
     const value = args?.outcome || outcome;
-    const c = one(
+    if (!stoppedOutcomes.has(value)) return;
+    const sourceKey = `source-resolution:${provider}:${sessionId}:${value}:${createHash('sha256')
+      .update(JSON.stringify(args || { outcome: value }))
+      .digest('hex')}`;
+    if (one(db, 'SELECT 1 FROM agent_jobs WHERE dedupe_key=?', sourceKey)) return;
+    let c = one(
       db,
       'SELECT * FROM agent_conversations WHERE provider=? AND session_id=?',
       provider,
       sessionId,
     );
-    if (c && stoppedOutcomes.has(value))
-      stop(c, value === 'opt_out' ? 'opted_out' : 'human_review', value);
+    if (
+      !c &&
+      caseId &&
+      one(
+        db,
+        'SELECT 1 FROM demo_voice_cases WHERE case_id=? AND provider=? AND session_id=?',
+        caseId,
+        provider,
+        sessionId,
+      )
+    ) {
+      run(
+        db,
+        'INSERT INTO agent_conversations (id,case_id,agreement_id,provider,session_id,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
+        id(),
+        caseId,
+        '',
+        provider,
+        sessionId,
+        'active',
+        now(),
+        now(),
+      );
+      c = one(
+        db,
+        'SELECT * FROM agent_conversations WHERE provider=? AND session_id=?',
+        provider,
+        sessionId,
+      );
+    }
+    if (!c) return;
+    if (value === 'opt_out' || value === 'invalid_contact') {
+      stop(c, 'opted_out', value);
+      return;
+    }
+    transaction(db, () => {
+      run(
+        db,
+        "UPDATE agent_jobs SET status='cancelled',error='Superseded by source outcome' WHERE conversation_id=? AND status IN ('queued','waiting_source_end','running')",
+        c.id,
+      );
+      run(
+        db,
+        "UPDATE agent_conversations SET status='active',version=version+1,updated_at=? WHERE id=?",
+        now(),
+        c.id,
+      );
+      saveResolution(c, 'queued', args?.note || value, 'Rafael will inspect the source outcome.', {
+        reason: args?.note || value,
+        outcome: value,
+        escalationId: trackEscalation(c, 'voice_' + value, args?.note || value, sourceKey),
+      });
+      const ended = one(
+        db,
+        'SELECT 1 FROM agent_source_ends WHERE provider=? AND session_id=?',
+        provider,
+        sessionId,
+      );
+      enqueue(c, 'supervisor_review', sourceKey, ended ? 'queued' : 'waiting_source_end');
+    });
   }
-  function loadContext(c) {
+  function loadContext(c, supervisor = false) {
     const item = one(db, 'SELECT * FROM cases WHERE id=?', c.case_id);
     const stored = one(
       db,
@@ -204,24 +554,55 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       .some((address) => one(db, 'SELECT 1 FROM suppressions WHERE address=?', address));
     const agreement = stored ? JSON.parse(stored.agreement_json) : null;
     let blocked = null;
-    if (!item || !agreement || agreement.demo !== true)
-      blocked = 'Accepted demo agreement is missing.';
+    const documents = library.list(c.case_id).documents;
+    const source = one(
+      db,
+      'SELECT 1 FROM demo_voice_cases WHERE case_id=? AND provider=? AND session_id=?',
+      c.case_id,
+      c.provider,
+      c.session_id,
+    );
+    if (!item || (c.agreement_id ? !agreement || agreement.demo !== true : !source))
+      blocked = 'Demo case or agreement is missing.';
     else if (c.status !== 'active') blocked = `Conversation is ${c.status}.`;
     else if (portfolio?.status === 'paused') blocked = 'Portfolio is paused.';
     else if (item.suppressed || suppressed || stoppedOutcomes.has(item.outcome))
       blocked = 'Contact stopped or awaiting human review.';
     else if (item.review_required && (reviews.length !== 1 || reviews[0].reason !== demoReview))
       blocked = 'Case requires human review.';
-    else if (!followup?.payment_details || followup.status === 'cancelled')
+    else if (agreement && (!followup?.payment_details || followup.status === 'cancelled'))
       blocked = 'Payment follow-up is missing or cancelled.';
+    const caseRestriction = blocked;
+    if (
+      supervisor &&
+      item &&
+      !item.suppressed &&
+      !suppressed &&
+      c.status === 'active' &&
+      portfolio?.status !== 'paused' &&
+      ['human_review', 'disputed', 'paid_reported'].includes(item.outcome)
+    )
+      blocked = null;
+    const authorizedOffers =
+      !agreement &&
+      source &&
+      item?.name === 'Ana Silva' &&
+      item?.amount_minor === 125000 &&
+      item?.currency === 'BRL'
+        ? datedDemoPaymentOffers()
+        : [];
     return {
       blocked,
-      snapshot: JSON.stringify({ item, stored, followup, reviews, portfolio }),
+      snapshot: JSON.stringify({ item, stored, followup, reviews, portfolio, documents }),
       context: {
         caseId: c.case_id,
+        caseRestriction,
+        outcome: item?.outcome,
         name: item?.name,
         language: item?.language || 'en',
         agreement,
+        authorizedOffers,
+        paymentAgreementCanBeSavedInChat: false,
         case: { name: item?.name, reference: item?.reference, language: item?.language },
         payment: { details: followup?.payment_details || '' },
         paymentDetails: followup?.payment_details || '',
@@ -229,7 +610,14 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
         transport: 'virtual',
         destination: `virtual:${c.case_id}`,
         identityConfirmed: true,
-        agreementAccepted: true,
+        agreementAccepted: !!agreement,
+        documents: documents.map(({ id, title, kind, version, source }) => ({
+          id,
+          title,
+          kind,
+          version,
+          source,
+        })),
       },
     };
   }
@@ -243,6 +631,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
     transport: 'virtual',
     destination: `virtual:${c.case_id}`,
     role: 'payment_conversation_agent',
+    resolution: resolution(c),
     taskStatus: one(
       db,
       'SELECT status FROM agent_jobs WHERE conversation_id=? ORDER BY rowid DESC LIMIT 1',
@@ -257,7 +646,15 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
         db,
         'SELECT * FROM agent_messages WHERE conversation_id=? ORDER BY rowid',
         c.id,
-      ),
+      ).map((m) => ({
+        ...m,
+        documents: all(
+          db,
+          'SELECT d.id,d.title,d.kind,d.version FROM agent_message_documents a JOIN case_documents d ON d.id=a.document_id WHERE a.message_id=? AND d.case_id=?',
+          m.id,
+          c.case_id,
+        ).map((d) => ({ ...d, url: `/api/cases/${c.case_id}/documents/${d.id}/content` })),
+      })),
       tasks: all(db, 'SELECT * FROM agent_jobs WHERE conversation_id=? ORDER BY rowid', c.id),
       runs: all(
         db,
@@ -279,7 +676,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
   }
   async function processJob(job) {
     const c = get(job.conversation_id),
-      loaded = loadContext(c);
+      loaded = loadContext(c, job.purpose === 'supervisor_review');
     if (loaded.blocked) {
       stop(c, 'blocked', loaded.blocked);
       return;
@@ -292,7 +689,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       runId,
       c.id,
       job.id,
-      'payment_conversation_agent',
+      job.purpose === 'supervisor_review' ? 'supervisor' : 'payment_conversation_agent',
       'running',
       now(),
     );
@@ -309,21 +706,130 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
         const at = history.findIndex((m) => m.id === inboundCutoff);
         if (at >= 0) history = history.filter((m, i) => m.direction === 'outbound' || i <= at);
       }
-      const result = await runAgent({
-        context: { ...loaded.context, purpose: job.purpose },
-        messages: history.map((m) => ({
-          role: m.direction === 'inbound' ? 'user' : 'assistant',
-          content: m.body,
-        })),
-        supervisor: false,
-        signal: abortController.signal,
-      });
+      let documentResult = null;
+      if (job.purpose === 'document_followup') {
+        const requestId = job.dedupe_key.slice(9);
+        assert(
+          one(db, 'SELECT 1 FROM document_requests WHERE id=? AND case_id=?', requestId, c.case_id),
+          'Document request belongs to another case.',
+          403,
+        );
+        documentResult = library.resolve(requestId);
+        run(
+          db,
+          'INSERT INTO agent_model_runs (id,conversation_id,job_id,role,status,model,provider,created_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?)',
+          id(),
+          c.id,
+          job.id,
+          'document_librarian',
+          documentResult.document ? 'completed' : 'failed',
+          null,
+          'local',
+          now(),
+          now(),
+        );
+        log(c.id, 'document.retrieved', {
+          requestId,
+          documentId: documentResult.document?.id || null,
+          status: documentResult.request.status,
+          role: 'document_librarian',
+        });
+      }
+      const deliveredDocuments = all(
+        db,
+        'SELECT DISTINCT d.id,d.title,d.kind,d.version,d.content FROM case_documents d JOIN agent_message_documents a ON a.document_id=d.id JOIN agent_messages m ON m.id=a.message_id WHERE m.conversation_id=? AND d.case_id=?',
+        c.id,
+        c.case_id,
+      ).map((d) => ({
+        ...d,
+        content: d.content.slice(0, 6000),
+        excerptTruncated: d.content.length > 6000,
+        totalCharacters: d.content.length,
+      }));
+      const savedResolution = one(
+        db,
+        'SELECT context_json FROM agent_resolutions WHERE conversation_id=?',
+        c.id,
+      );
+      const resolutionContext = savedResolution ? JSON.parse(savedResolution.context_json) : {};
+      let result =
+        documentResult && !documentResult.document
+          ? {
+              action: 'escalate_supervisor',
+              text: 'The requested document needs review.',
+              reason: 'Requested document is missing or ambiguous.',
+            }
+          : await runAgent({
+              context: {
+                ...loaded.context,
+                purpose: job.purpose,
+                supervisorResolution: resolutionContext,
+                supervisorGuidance:
+                  job.purpose === 'marina_guided_reply' ? resolutionContext.guidance : null,
+                availableCapabilities: [
+                  'read_case_context',
+                  'present_authorized_offers',
+                  'retrieve_loan_agreement',
+                  'retrieve_account_statement',
+                  'virtual_sms',
+                ],
+                unavailableCapabilities: [
+                  'verify_real_payment',
+                  'save_payment_agreement_in_text',
+                  'change_approved_terms',
+                  'human_transfer',
+                ],
+                deliveredDocuments,
+                documentResult: documentResult?.document
+                  ? {
+                      id: documentResult.document.id,
+                      title: documentResult.document.title,
+                      kind: documentResult.document.kind,
+                      version: documentResult.document.version,
+                      source: documentResult.document.source,
+                      excerptTruncated: documentResult.document.content.length > 6000,
+                      totalCharacters: documentResult.document.content.length,
+                      content: documentResult.document.content.slice(0, 6000),
+                    }
+                  : null,
+              },
+              messages: history.map((m) => ({
+                role: m.direction === 'inbound' ? 'user' : 'assistant',
+                content: m.body,
+              })),
+              supervisor: job.purpose === 'supervisor_review',
+              deferSupervisor: true,
+              signal: abortController.signal,
+            });
       assert(
-        result && ['reply', 'human_review', 'paid_reported', 'opt_out'].includes(result.action),
+        result &&
+          [
+            'reply',
+            'escalate_supervisor',
+            'awaiting_information',
+            'awaiting_specialist',
+            'blocked_policy',
+            'human_review',
+            'paid_reported',
+            'opt_out',
+            'request_loan_agreement',
+            'request_account_statement',
+          ].includes(result.action),
         'Invalid SMS agent action.',
       );
       assert(
-        typeof result.text === 'string' && result.text.trim() && result.text.length <= 4000,
+        typeof result.text === 'string' &&
+          (result.text.trim() ||
+            [
+              'escalate_supervisor',
+              'human_review',
+              'awaiting_information',
+              'awaiting_specialist',
+              'blocked_policy',
+              'request_loan_agreement',
+              'request_account_statement',
+            ].includes(result.action)) &&
+          result.text.length <= 4000,
         'Invalid SMS agent message.',
       );
       if (closing) return;
@@ -335,25 +841,47 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
         'Agent supplied an unauthorized payment URL.',
       );
       const allowedAmounts = new Set([
-        loaded.context.agreement.totalMinor,
-        ...loaded.context.agreement.installments.map((p) => p.amountMinor),
+        ...loaded.context.authorizedOffers.flatMap((o) => [
+          o.totalMinor,
+          ...o.installments.map((p) => p.amountMinor),
+        ]),
+        ...(loaded.context.agreement
+          ? [
+              loaded.context.agreement.totalMinor,
+              ...loaded.context.agreement.installments.map((p) => p.amountMinor),
+            ]
+          : []),
       ]);
+      const evidence = [
+        ...deliveredDocuments,
+        ...(documentResult?.document ? [documentResult.document] : []),
+      ]
+        .map((d) => d.content)
+        .join('\n');
+      for (const m of evidence.matchAll(/(?:R\$|BRL)\s*([0-9][0-9.,]*)/gi)) {
+        const n = m[1].replace(/[.,]$/, '');
+        allowedAmounts.add(Number(n.replace(/[^0-9]/g, '')) * (/[.,]\d{2}$/.test(n) ? 1 : 100));
+      }
       for (const match of result.text.matchAll(/(?:R\$|BRL)\s*([0-9][0-9.,]*)/gi)) {
         const numeric = match[1].replace(/[.,]$/, '');
         const decimal = /[.,]\d{2}$/.test(numeric);
         const minor = Number(numeric.replace(/[^0-9]/g, '')) * (decimal ? 1 : 100);
         assert(allowedAmounts.has(minor), 'Agent supplied an unauthorized payment amount.');
       }
-      const dates = new Set(loaded.context.agreement.installments.map((p) => p.dueDate));
+      const dates = new Set([
+        ...(loaded.context.agreement?.installments || []).map((p) => p.dueDate),
+        ...loaded.context.authorizedOffers.flatMap((o) => o.installments.map((p) => p.dueDate)),
+      ]);
+      for (const date of evidence.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []) dates.add(date);
       assert(
         (result.text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []).every((date) => dates.has(date)),
         'Agent supplied an unauthorized payment date.',
       );
       transaction(db, () => {
         const fresh = get(c.id),
-          checked = loadContext(fresh);
+          checked = loadContext(fresh, job.purpose === 'supervisor_review');
         for (const extra of result.runs || [])
-          if (extra.role === 'supervisor')
+          if (extra.role === 'supervisor' && job.purpose !== 'supervisor_review')
             run(
               db,
               'INSERT INTO agent_model_runs (id,conversation_id,job_id,role,status,model,provider,usage_json,created_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
@@ -368,7 +896,10 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
               now(),
               now(),
             );
-        const primaryRun = result.runs?.find((r) => r.role === 'sms') || result;
+        const primaryRun =
+          result.runs?.find(
+            (r) => r.role === (job.purpose === 'supervisor_review' ? 'supervisor' : 'sms'),
+          ) || result;
         run(
           db,
           'UPDATE agent_model_runs SET status=?,model=?,provider=?,usage_json=?,completed_at=? WHERE id=?',
@@ -398,46 +929,160 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
           log(c.id, 'message.cancelled_stale');
           return;
         }
+        const supervisorJob = job.purpose === 'supervisor_review';
+        if (supervisorJob && loaded.context.caseRestriction) {
+          const status =
+            loaded.context.outcome === 'paid_reported' ? 'awaiting_specialist' : 'blocked_policy';
+          waitForResolution(c, job, status, result.reason || loaded.context.caseRestriction, null, {
+            ...resolutionContext,
+            restriction: loaded.context.caseRestriction,
+          });
+          return;
+        }
+        if (
+          ['human_review', 'escalate_supervisor'].includes(result.action) ||
+          (!supervisorJob && resolutionStates.has(result.action))
+        ) {
+          if (supervisorJob || job.purpose === 'marina_guided_reply') {
+            waitForResolution(
+              c,
+              job,
+              'awaiting_specialist',
+              result.reason || 'The available capabilities cannot resolve this request.',
+              'This request is still unresolved. I cannot complete it with the capabilities currently available.',
+              resolutionContext,
+            );
+          } else {
+            referSupervisor(
+              c,
+              job,
+              result.reason || 'The conversation needs specialist guidance.',
+              documentResult && !documentResult.document
+                ? { ...resolutionContext, missingDocument: documentResult.request }
+                : {},
+            );
+          }
+          return;
+        }
+        if (supervisorJob && resolutionStates.has(result.action)) {
+          waitForResolution(
+            c,
+            job,
+            result.action,
+            result.reason || 'Additional information or authorization is required.',
+            result.text,
+            resolutionContext,
+          );
+          return;
+        }
+        if (supervisorJob && result.action === 'reply') {
+          saveResolution(
+            c,
+            'guidance_ready',
+            result.reason || 'Rafael supplied guidance.',
+            'Marina will continue the conversation.',
+            { ...resolutionContext, guidance: result.text },
+          );
+          enqueue(c, 'marina_guided_reply', `guided:${job.id}`);
+          run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+          return;
+        }
+        if (result.action.startsWith('request_')) {
+          assert(
+            ['reply', 'supervisor_review', 'marina_guided_reply'].includes(job.purpose),
+            'Document requests require an inbound turn or supervisor task.',
+          );
+          const kind = result.action.slice(8);
+          const attempted = resolutionContext.attemptedDocumentKinds || [];
+          if (
+            supervisorJob &&
+            (attempted.includes(kind) ||
+              (resolutionContext.missingDocument?.kind === kind &&
+                ['missing', 'ambiguous'].includes(resolutionContext.missingDocument.status)))
+          ) {
+            waitForResolution(
+              c,
+              job,
+              'awaiting_information',
+              'The requested evidence is missing or ambiguous; repeated retrieval cannot resolve it.',
+              'The document information needed to resolve this is not available yet.',
+              resolutionContext,
+            );
+            return;
+          }
+          const request = library.request({
+            caseId: c.case_id,
+            kind,
+            requestId: `message-${job.id}`,
+          });
+          enqueue(c, 'document_followup', `document:${request.id}`);
+          run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+          log(c.id, 'document.requested', { requestId: request.id, kind: result.action.slice(8) });
+          if (supervisorJob)
+            saveResolution(
+              c,
+              'awaiting_specialist',
+              result.reason || 'Document retrieval requested.',
+              'Helena will retrieve the requested document.',
+              { ...resolutionContext, attemptedDocumentKinds: [...attempted, kind] },
+            );
+          return;
+        }
         if (result.action !== 'reply') {
-          const outcome = result.action;
-          if (outcome !== 'opt_out')
+          if (result.action === 'opt_out') {
+            recordOutcome(
+              db,
+              c.case_id,
+              { outcome: 'opt_out', note: 'Virtual SMS contact stop' },
+              'agent',
+            );
+            cancelFollowups(c.case_id);
+            stop(c, 'opted_out', 'Participant requested contact stop.');
+            run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+          } else if (result.action === 'paid_reported') {
+            // A report is not verification. Hold collection without manufacturing a human task.
+            run(
+              db,
+              "UPDATE cases SET outcome='paid_reported',status='review' WHERE id=?",
+              c.case_id,
+            );
+            cancelFollowups(c.case_id);
+            event(
+              db,
+              c.case_id,
+              'payment_reported',
+              { verified: false, owner: 'supervisor' },
+              'agent',
+            );
             run(
               db,
               'INSERT OR IGNORE INTO agent_messages VALUES (?,?,?,?,?,?,?)',
               id(),
               c.id,
               'outbound',
-              outcome === 'paid_reported'
-                ? 'Thank you for letting us know. Your payment report has been recorded for verification; it is not yet confirmed.'
-                : 'I have referred this to a team member for review. The agreed payment terms remain unchanged.',
+              'Your payment report is recorded, but payment is not yet verified. Further collection is on hold pending verification.',
               'simulated_delivered',
               `job:${job.id}`,
               now(),
             );
-          recordOutcome(db, c.case_id, { outcome, note: 'Virtual SMS agent outcome' }, 'agent');
-          cancelFollowups(c.case_id);
-          task(
-            db,
-            c.case_id,
-            outcome === 'paid_reported'
-              ? 'Verify reported payment; payment is not confirmed'
-              : result.reason || 'SMS agent requested human review',
-            now(),
-            'high',
-          );
-          stop(c, outcome === 'opt_out' ? 'opted_out' : 'human_review', outcome);
-          run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
-          event(db, c.case_id, 'sms_agent_escalation', { outcome, demo: true }, 'agent');
+            referSupervisor(
+              c,
+              job,
+              'Payment verification requires a verified lender/payment result.',
+              { paymentReported: true },
+            );
+          }
           return;
         }
         const body =
           job.purpose === 'agreement_followup'
             ? `${result.text.trim()}\n\n${paymentBlock(loaded.context)}`
             : result.text.trim();
+        const messageId = id();
         run(
           db,
           'INSERT OR IGNORE INTO agent_messages VALUES (?,?,?,?,?,?,?)',
-          id(),
+          messageId,
           c.id,
           'outbound',
           body,
@@ -446,6 +1091,34 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
           now(),
         );
         run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+        if (documentResult?.document) {
+          run(
+            db,
+            'INSERT OR IGNORE INTO agent_message_documents VALUES (?,?)',
+            messageId,
+            documentResult.document.id,
+          );
+          event(
+            db,
+            c.case_id,
+            'document.simulated_delivered',
+            {
+              documentId: documentResult.document.id,
+              requestId: documentResult.request.id,
+              messageId,
+              demo: true,
+            },
+            'agent',
+          );
+        }
+        if (['marina_guided_reply', 'document_followup'].includes(job.purpose) && savedResolution)
+          saveResolution(
+            c,
+            'resolved',
+            'The requested information was supplied.',
+            'Continue the conversation normally.',
+            { escalationId: resolutionContext.escalationId },
+          );
         log(c.id, 'message.simulated_delivered', { jobId: job.id });
       });
     } catch (error) {
@@ -467,11 +1140,26 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
           new Date(Date.now() + current.attempts * 2000).toISOString(),
           job.id,
         );
+      if (job.purpose === 'supervisor_review' && current.attempts >= 3)
+        run(
+          db,
+          "UPDATE agent_escalations SET status='failed',next_action='Supervisor execution failed; check configuration and retry.',updated_at=? WHERE conversation_id=? AND status NOT IN ('resolved','cancelled')",
+          now(),
+          c.id,
+        );
       log(c.id, 'agent.failed', { jobId: job.id });
     }
   }
   async function drain() {
     if (config.mode !== 'demo' || config.agentWorkflowsEnabled === false) return;
+    for (const waiting of all(
+      db,
+      "SELECT c.*,r.fingerprint FROM agent_conversations c JOIN agent_resolutions r ON r.conversation_id=c.id WHERE c.status IN ('awaiting_information','awaiting_specialist')",
+    )) {
+      const checked = loadContext({ ...waiting, status: 'active' });
+      if (!checked.blocked && checked.snapshot !== waiting.fingerprint)
+        wakeResolution(waiting, `context:${waiting.id}:${id()}`);
+    }
     for (let count = 0; count < 10 && !closing; count++) {
       const job = one(
         db,
@@ -519,6 +1207,35 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       ).map(present),
     }),
   );
+  router.get('/escalations', (req, res) => {
+    const rows = all(
+      db,
+      `SELECT e.*,c.case_id,k.name AS case_name,k.reference AS case_reference
+      FROM agent_escalations e JOIN agent_conversations c ON c.id=e.conversation_id JOIN cases k ON k.id=c.case_id
+      ORDER BY e.created_at DESC,e.rowid DESC LIMIT 200 OFFSET ?`,
+      Math.max(0, Math.min(Number(req.query.offset) || 0, 100000)),
+    );
+    const counts = one(
+      db,
+      "SELECT COUNT(*) total,SUM(CASE WHEN status='resolved' THEN 1 ELSE 0 END) resolved,SUM(CASE WHEN status NOT IN ('resolved','cancelled') THEN 1 ELSE 0 END) open FROM agent_escalations",
+    );
+    res.json({
+      escalations: rows.map((e) => ({
+        id: e.id,
+        conversationId: e.conversation_id,
+        caseId: e.case_id,
+        caseName: e.case_name,
+        caseReference: e.case_reference,
+        trigger: e.trigger,
+        reason: e.reason,
+        status: e.status,
+        nextAction: e.next_action,
+        createdAt: e.created_at,
+        updatedAt: e.updated_at,
+      })),
+      summary: { total: counts.total, open: counts.open || 0, resolved: counts.resolved || 0 },
+    });
+  });
   router.get('/:id', (req, res) => res.json(detail(req.params.id)));
   router.post('/:id/messages', (req, res) => {
     const c = get(req.params.id),
@@ -541,7 +1258,11 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       assert(duplicate.body === text.trim(), 'requestId already used for another message.', 409);
       return res.json(detail(c.id));
     }
-    assert(c.status === 'active', 'This conversation is not accepting agent replies.', 409);
+    assert(
+      c.status === 'active' || resolutionStates.has(c.status),
+      'This conversation is not accepting agent replies.',
+      409,
+    );
     assert(
       one(
         db,
@@ -578,8 +1299,17 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
         );
         cancelFollowups(c.case_id);
         stop(c, 'opted_out', 'Participant requested contact stop.');
-      } else enqueue(c, 'reply', `reply:${messageId}`);
+      } else if (resolutionStates.has(c.status)) wakeResolution(c, `clarification:${messageId}`);
+      else enqueue(c, 'reply', `reply:${messageId}`);
     });
+    res.status(202).json(detail(c.id));
+  });
+  router.post('/:id/recheck', (req, res) => {
+    const c = get(req.params.id);
+    assert(resolutionStates.has(c.status), 'Only waiting resolutions can be rechecked.', 409);
+    const checked = loadContext({ ...c, status: 'active' }, true);
+    assert(!checked.blocked, checked.blocked || 'Case remains restricted.', 409);
+    transaction(db, () => wakeResolution(c, `recheck:${c.id}:${id()}`));
     res.status(202).json(detail(c.id));
   });
   router.post('/:id/pause', (req, res) => {
@@ -625,7 +1355,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
     );
     run(
       db,
-      "UPDATE agent_jobs SET status=CASE WHEN purpose='agreement_followup' AND ?=0 THEN 'waiting_source_end' ELSE 'queued' END,due_at=? WHERE conversation_id=? AND status='paused'",
+      "UPDATE agent_jobs SET status=CASE WHEN purpose IN ('agreement_followup','document_followup','supervisor_review') AND ?=0 THEN 'waiting_source_end' ELSE 'queued' END,due_at=? WHERE conversation_id=? AND status='paused'",
       ended ? 1 : 0,
       now(),
       c.id,
@@ -657,15 +1387,27 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
     };
   }
   function agentStats() {
-    const primary = summary();
+    function roleStats(role, supervisor) {
+      const purpose = supervisor ? "purpose='supervisor_review'" : "purpose!='supervisor_review'";
+      const count = (statuses) =>
+        one(db, `SELECT COUNT(*) n FROM agent_jobs WHERE ${purpose} AND status IN (${statuses})`).n;
+      return {
+        queued: count("'queued','waiting_source_end'"),
+        running: count("'running'"),
+        failed: count("'failed'"),
+        completed: count("'completed'"),
+        lastRuns: all(
+          db,
+          'SELECT * FROM agent_model_runs WHERE role=? ORDER BY rowid DESC LIMIT 20',
+          role,
+        ),
+      };
+    }
     return {
-      payment_conversation_agent: {
-        ...primary,
-        lastRuns: primary.lastRuns.filter((r) => r.role === 'payment_conversation_agent'),
-      },
+      document_librarian: library.stats(),
+      payment_conversation_agent: roleStats('payment_conversation_agent', false),
       supervisor: {
-        queued: 0,
-        running: 0,
+        ...roleStats('supervisor', true),
         failed: one(
           db,
           "SELECT COUNT(*) n FROM agent_model_runs WHERE role='supervisor' AND status='failed'",
@@ -674,15 +1416,14 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
           db,
           "SELECT COUNT(*) n FROM agent_model_runs WHERE role='supervisor' AND status='completed'",
         ).n,
-        lastRuns: all(
-          db,
-          "SELECT * FROM agent_model_runs WHERE role='supervisor' ORDER BY rowid DESC LIMIT 20",
-        ),
       },
     };
   }
+
   return {
     agentStats,
+    documentRequested,
+    library,
     summary,
     router,
     agreementSaved,

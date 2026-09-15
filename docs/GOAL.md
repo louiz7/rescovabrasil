@@ -1,6 +1,6 @@
 # Rescova Brasil — Distressed-Credit Outreach MVP
 
-Stand: 14. September 2026. Produktentscheidung des Auftraggebers: erster Markt Brasilien; Twilio- und OpenAI-Konten vorhanden. Arbeitsname Rescova. Aktualisierte Produktentscheidung: Bedienoberfläche auf Englisch; Nachrichten und Telefonate für Schuldner weiterhin in pt-BR. Dieses Dokument ist die überprüfbare Spezifikation des aktiven Entwicklungsziels.
+Stand: 15. September 2026. Produktentscheidung des Auftraggebers: erster Markt Brasilien; Twilio- und OpenAI-Konten vorhanden. Arbeitsname Rescova. Aktualisierte Produktentscheidung: Bedienoberfläche auf Englisch; Nachrichten und Telefonate für Schuldner weiterhin in pt-BR. Dieses Dokument ist die überprüfbare Spezifikation des aktiven Entwicklungsziels.
 
 Aktueller Abnahmeschritt nach Nutzerentscheidung: **zuerst die lokale App prüfen; Live-Test ausdrücklich später.** Der lokale Implementierungsstand ist geliefert und getestet; reale Providerabnahme wird nicht stillschweigend als bestanden betrachtet oder automatisch ausgeführt. Siehe `VALIDATION.md`.
 
@@ -8,7 +8,7 @@ Aktueller Abnahmeschritt nach Nutzerentscheidung: **zuerst die lokale App prüfe
 
 Produktentscheidung des Auftraggebers: Im Zielzustand läuft Rescova grundsätzlich vollständig agentisch. Spezialisierte Agenten übernehmen alle relevanten Aufgaben, kommunizieren miteinander, teilen den erforderlichen Kontext, koordinieren ihre Arbeit und übergeben Aufgaben und Ergebnisse untereinander. Das umfasst beispielsweise Gesprächsführung über verschiedene Kanäle, Gesprächsauswertung, Planung nächster Schritte, Nachrichtenformulierung, Follow-ups und operative Fallbearbeitung. Die konkrete Aufteilung der Agenten bleibt offen und entwickelt sich mit dem Produkt.
 
-Dieses Zielbild ist bei neuen Funktionen, Technologieentscheidungen, Datenmodellen und Schnittstellen immer mitzudenken. Funktionen sollen perspektivisch durch Agenten nutzbar und miteinander kombinierbar sein; Kontext, Aufgaben, Zustände und Ergebnisse sollen zwischen ihnen weitergegeben werden können. Die Oberfläche dient langfristig insbesondere der Übersicht, Konfiguration und menschlichen Bearbeitung von Ausnahmen.
+Dieses Zielbild ist bei neuen Funktionen, Technologieentscheidungen, Datenmodellen und Schnittstellen immer mitzudenken. Funktionen sollen perspektivisch durch Agenten nutzbar und miteinander kombinierbar sein; Kontext, Aufgaben, Zustände und Ergebnisse sollen zwischen ihnen weitergegeben werden können. Die Oberfläche dient langfristig insbesondere der Übersicht, Konfiguration und Kontrolle von Ausnahmen. Ungeklärte Aufgaben gehören grundsätzlich einem verantwortlichen Agenten; menschliche Bearbeitung ist keine notwendige Standard-Endstation.
 
 Das ist die langfristige Produktausrichtung, keine Behauptung über bereits implementierte Autonomie und keine pauschale Freigabe heutiger Agenten für externe Aktionen. Aktuelle Demo-Grenzen, Berechtigungen und fachliche Regeln bleiben bestehen. Diese Festlegung verlangt weder sofort einen Agenten für jede Funktion noch ein bestimmtes Framework oder einen vorzeitigen Umbau der bestehenden Architektur.
 
@@ -21,6 +21,12 @@ Im Zielzustand prüfen spezialisierte Agenten täglich den Portfoliozustand, pla
 Jedes Portfolio erhält eine eigene Fortschrittsübersicht: Fälle und bekannter Bestand, Kontaktabdeckung, erreichte Personen, Antworten, Kontaktversuche, offene Follow-ups, wartende/gesperrte Fälle, Zahlungsvereinbarungen und jüngste Aktivitäten. Vereinbarte Beträge sind keine bestätigten Zahlungseingänge. Solange keine Zahlungsabstimmung implementiert ist, wird Rückgewinnung ausdrücklich als nicht verfügbar ausgewiesen.
 
 Dieser Umsetzungsschritt schafft persistente Aktivierung/Pause, automatische Aufnahme neuer geeigneter Fälle in die bestehende Ausführung und die Portfolio-Oberfläche. Die heutige Demo verarbeitet Kontakte weiterhin über den Simulator; bestehende Live-Provider-Regeln bleiben maßgeblich. Eine vollständige autonome Auswertung, Nachrichtenformulierung, tägliche Strategieplanung und Zahlungsabstimmung wird dadurch nicht als fertig behauptet. Erschöpfte oder bereits bearbeitete Fälle werden nicht blind neu eingeschrieben.
+
+## Präzisierung: agentische Ausnahmebearbeitung
+
+Rafael übernimmt ungeklärte virtuelle Gesprächsfälle als persistente Aufgabe `supervisor_review`, lädt aktuellen Fallkontext und entscheidet über eine Antwort durch Marina (`marina_guided_reply`), Dokumentbeschaffung durch Helena oder einen expliziten Wartezustand. `awaiting_information`, `awaiting_specialist` und `blocked_policy` halten Grund und nächsten Schritt fest. Fehlende Fähigkeiten und Freigaben dürfen nicht erfunden werden. Ein Zahlungshinweis bleibt unbestätigt, erfordert Zahlungsabstimmung und beschränkt weitere Ansprache. Kontaktstopps gelten sofort.
+
+Für diese virtuellen Workflows ist kein menschlicher Übergabekanal konfiguriert. Der historische Wert `human_review` bleibt an kompatiblen Schnittstellen erhalten, bedeutet hier aber agentische Fallklärung und keine zugesagte menschliche Übergabe. Bestehende manuelle Operatorfunktionen, historische Aufgaben und importierte Portfolio-Queues werden mit diesem Schritt nicht pauschal migriert. Die folgenden älteren MVP-Anforderungen beschreiben diese bisherigen Grenzen; sie definieren keine dauerhafte menschliche Abhängigkeit des Zielprodukts. Neue Gesprächsworkflows folgen der agentischen Ausnahmebearbeitung und dem aktuellen Ablauf in [WORKFLOWS.md](WORKFLOWS.md).
 
 ## Ziel und Nutzen
 
@@ -149,4 +155,11 @@ Accepted voice-demo payment solutions must persist in the demo workspace as a ca
 
 New product requirement: agent roles, task state, domain tools and conversation memory must be independent of a particular model/provider. Per-role profiles select provider, model and API endpoint. Provider adapters translate only request/response formats; workflow records and business actions use normalized contracts. OpenRouter and compatible providers can be selected without rewriting the payment workflow. Model/provider capabilities and role-level evaluation remain required; interchangeable transport does not imply identical model behavior.
 
-The first implemented handoff is an accepted demo payment solution → observed end of source call → persistent virtual SMS agent conversation. The coordinator creates and serializes durable jobs, the lightweight text model formulates replies, and a stronger supervisor is consulted on ambiguity. An Agents overview exposes actual implemented roles/configuration and tracked workflow jobs. This is automatic virtual delivery with real model generation, not enabled physical SMS. Existing live voice adapters remain separate. Full autonomous portfolio planning remains a later step.
+The first implemented handoff is an accepted demo payment solution → observed end of source call → persistent virtual SMS agent conversation. The coordinator creates and serializes durable jobs, the lightweight text model formulates replies, and Rafael owns unresolved requests through durable supervisor jobs, guided Marina replies, document delegation and explicit dependency states. An Agents overview exposes actual implemented roles/configuration and tracked workflow jobs. This is automatic virtual delivery with real model generation, not enabled physical SMS. Existing live voice adapters remain separate. Full autonomous portfolio planning remains a later step.
+
+
+## Document librarian and workflow map — 15 September 2026
+
+The next implemented slice is voice document request → case-scoped Helena retrieval → Marina virtual SMS fulfillment → continued written conversation. A document request does not require accepting a payment agreement. Cases expose immutable uploaded text documents and retrieval status; new Ana demo sources include explicitly fictional artifacts. Helena starts as a deterministic retrieval specialist, with a storage interface that can evolve to external connectors and semantic retrieval. This does not yet authorize real external document delivery or implement PDF/OCR processing.
+
+[WORKFLOWS.md](WORKFLOWS.md) is the maintained workflow map. Update its Mermaid diagrams whenever an implementation change affects task triggers, ownership, delivery, or lifecycle. Diagrams distinguish current execution from planned continuous portfolio autonomy.

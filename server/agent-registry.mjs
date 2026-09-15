@@ -8,15 +8,34 @@ export function agentRegistry(config, workflows) {
   const enabled = config.mode === 'demo' && config.agentWorkflowsEnabled;
   const rows = [
     {
+      id: 'document_librarian',
+      kind: 'retrieval',
+      ...agentIdentities.document_librarian,
+      description:
+        'Retrieves case documents for Marina. Exact case/type matching with immutable source versions.',
+      provider: 'local',
+      model: 'Deterministic retrieval',
+      configured: true,
+      execution: enabled ? 'On document request' : 'Disabled',
+      scope: 'Demo case documents',
+      capabilities: [
+        'Find case documents',
+        'Preserve source versions',
+        'Flag missing or ambiguous evidence',
+        'Hand documents to Marina',
+      ],
+    },
+    {
       id: 'payment_conversation_agent',
       name: 'Payment conversation agent',
       description:
-        'Follows up on accepted demo agreements and continues the virtual SMS conversation.',
+        'Follows up on demo agreements and document requests, and continues the virtual SMS conversation.',
       ...profile('sms'),
       execution: enabled ? 'Automatic after call end' : 'Disabled',
       scope: 'Virtual SMS',
       capabilities: [
         'Read accepted agreement',
+        'Request and explain case documents',
         'Reply to messages',
         'Record outcomes',
         'Request specialist review',
@@ -26,11 +45,17 @@ export function agentRegistry(config, workflows) {
       id: 'supervisor',
       name: 'Case supervisor',
       description:
-        'Helps the conversation agent resolve uncertain next steps. Runs only when requested.',
+        'Owns exception resolution, guides Marina and tracks cases awaiting information or policy clearance.',
       ...profile('supervisor'),
       execution: enabled ? 'On demand' : 'Disabled',
       scope: 'Case decisions',
-      capabilities: ['Review scoped case context', 'Recommend next action', 'Escalate to a person'],
+      capabilities: [
+        'Resolve case exceptions',
+        'Request case documents',
+        'Guide Marina with approved options',
+        'Recheck new case facts',
+        'Track blocked work and next actions',
+      ],
     },
     {
       id: 'openai_voice',
@@ -41,7 +66,7 @@ export function agentRegistry(config, workflows) {
       configured: !!config.openaiKey,
       execution: 'Manual test',
       scope: 'Browser and Twilio test',
-      capabilities: ['Voice conversation', 'Delegate identity and payment tools'],
+      capabilities: ['Voice conversation', 'Delegate identity, payment and document tools'],
     },
     {
       id: 'voice_backend',
@@ -57,6 +82,7 @@ export function agentRegistry(config, workflows) {
         'Confirm self-reported name',
         'Read authorized offers',
         'Save payment agreement',
+        'Request case documents',
         'Record outcomes',
       ],
     },
@@ -69,7 +95,12 @@ export function agentRegistry(config, workflows) {
       configured: !!config.xaiKey,
       execution: 'Manual test',
       scope: 'Browser test',
-      capabilities: ['Voice conversation', 'Save payment agreement', 'Record outcomes'],
+      capabilities: [
+        'Voice conversation',
+        'Save payment agreement',
+        'Request case documents',
+        'Record outcomes',
+      ],
     },
   ];
   return {

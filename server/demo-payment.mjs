@@ -97,6 +97,20 @@ function ensureStorage(db) {
     attempt_id TEXT PRIMARY KEY REFERENCES attempts(id), agreement TEXT NOT NULL
   );`);
 }
+export function datedDemoPaymentOffers(at = new Date()) {
+  const anchorDate = localDate(at);
+  return demoPaymentOffers.map((offer) => ({
+    ...offer,
+    anchorDate,
+    timezone: zone,
+    expiresOn: plusDays(anchorDate, offer.expiresInDays),
+    installments: offer.installments.map((part) => ({
+      amountMinor: part.amountMinor,
+      dueDate: plusMonths(plusDays(anchorDate, part.dueInDays), part.monthOffset),
+    })),
+  }));
+}
+
 export function paymentDemoContext(db, attemptId) {
   const { a } = fixture(db, attemptId);
   ensureStorage(db);
@@ -117,16 +131,7 @@ export function paymentDemoContext(db, attemptId) {
     attemptId,
   );
   return {
-    offers: demoPaymentOffers.map((offer) => ({
-      ...offer,
-      anchorDate,
-      timezone: zone,
-      expiresOn: plusDays(anchorDate, offer.expiresInDays),
-      installments: offer.installments.map((part) => ({
-        amountMinor: part.amountMinor,
-        dueDate: plusMonths(plusDays(anchorDate, part.dueInDays), part.monthOffset),
-      })),
-    })),
+    offers: datedDemoPaymentOffers(anchorDate + 'T12:00:00Z'),
     agreement: saved ? JSON.parse(saved.agreement) : null,
   };
 }

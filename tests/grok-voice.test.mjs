@@ -61,7 +61,7 @@ test('Grok relay configures direct tools and PCM audio after authenticated serve
   assert.equal(session.voice, 'eve');
   assert.deepEqual(session.audio.input.format, { type: 'audio/pcm', rate: 24000 });
   assert.equal(session.turn_detection.type, 'server_vad');
-  assert.equal(session.tools.length, 4);
+  assert.equal(session.tools.length, 5);
   assert.ok(session.instructions.includes('Am I speaking to Ana Silva?'));
   assert.equal(session.delegation, undefined);
   assert.equal(h.client.sent.length, 0);

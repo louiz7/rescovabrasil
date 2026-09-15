@@ -68,7 +68,7 @@ test('Twilio PCMU audio flows through native Live with managed tools, no manual 
   h.ai.emit('open');
   const session = h.ai.sent[0].session;
   assert.deepEqual(session.audio.format, { type: 'audio/pcmu', rate: 8000 });
-  assert.equal(session.delegation.responses.tools.length, 4);
+  assert.equal(session.delegation.responses.tools.length, 5);
   const audio = Buffer.alloc(160, 255).toString('base64');
   h.phone.receive({ event: 'media', streamSid: 'MZtest', media: { payload: audio } });
   assert.equal(h.ai.sent.length, 1);

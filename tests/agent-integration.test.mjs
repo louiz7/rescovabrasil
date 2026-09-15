@@ -83,7 +83,7 @@ test('accepted voice agreement waits for source end then continues as one durabl
   d = await req('/agent-workflows/' + c.id);
   assert.equal(d.messages.length, 3);
   const registry = await req('/agents');
-  assert.equal(registry.agents.length, 5);
+  assert.equal(registry.agents.length, 6);
   assert.ok(!JSON.stringify(registry).includes('private-model-key'));
   assert.equal(one(f.db, 'SELECT COUNT(*) n FROM attempts').n, 0);
   await app.locals.agentWorkflows.closeAll();

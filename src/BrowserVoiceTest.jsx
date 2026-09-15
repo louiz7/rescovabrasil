@@ -28,6 +28,7 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
   const [confirmed, setConfirmed] = useState(false);
   const [agreement, setAgreement] = useState(null);
   const [platform, setPlatform] = useState(null);
+  const [documentPlatform, setDocumentPlatform] = useState(null);
   const [debugStatus, setDebugStatus] = useState(null);
   const debugCall = useRef(null);
   const audio = useRef(null);
@@ -98,6 +99,7 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
     setOutcome(null);
     setAgreement(null);
     setPlatform(null);
+    setDocumentPlatform(null);
     setConfirmed(false);
     setElapsed(0);
     setActive(true);
@@ -137,6 +139,8 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
         }
         if (name === 'record_outcome' && result.recorded === true)
           setOutcome(result.outcome || 'Recorded');
+        if (result.documentRequested === true && result.platform?.caseId)
+          setDocumentPlatform(result.platform);
       },
       onError: (message) => current() && setError(message),
     });
@@ -320,17 +324,49 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
         platform={platform}
         onCase={onCase}
       />
+      {documentPlatform && (
+        <section
+          className="demo-payment-agreement"
+          aria-label="Saved document request"
+          role="status"
+        >
+          <h3>Document request saved</h3>
+          <p>
+            {documentPlatform.reference || 'Demo case'} · Helena will retrieve the requested
+            document.
+          </p>
+          <p>
+            End the test, then open Demo SMS conversations to see the follow-up. Delivery is
+            simulated.
+          </p>
+          {onCase && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => onCase(documentPlatform.caseId)}
+            >
+              Open saved case
+            </button>
+          )}
+        </section>
+      )}
       <section className="voice-test-sample" aria-label="Conversation ideas">
         <h3>Try a conversation</h3>
         <p>When asked whether you are Ana Silva, a clear “Yes” is enough. Then try one of these:</p>
         <ul>
           <li>“What is my outstanding balance?”</li>
+          <li>“Can you send me my original loan agreement?”</li>
           <li>“I cannot afford to pay right now.”</li>
           <li>“Could someone call me back tomorrow afternoon?”</li>
           <li>“I do not recognize this debt.”</li>
           <li>“I would like to speak to a person.”</li>
           <li>“Please stop contacting me.”</li>
         </ul>
+        <p>
+          <strong>Document workflow:</strong> Play Ana Silva, confirm your name, ask for the
+          original loan agreement, then click End test. Open Agents → Demo SMS conversations to see
+          Helena’s retrieval and Marina’s follow-up.
+        </p>
         <p>
           Use your own words and ask follow-up questions. These are fictional scenarios; no real
           debt or payment is changed.

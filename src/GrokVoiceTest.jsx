@@ -25,6 +25,7 @@ export default function GrokVoiceTest({ onCase, onDebug }) {
     [outcome, setOutcome] = useState(''),
     [agreement, setAgreement] = useState(null),
     [platform, setPlatform] = useState(null),
+    [documentPlatform, setDocumentPlatform] = useState(null),
     [debugStatus, setDebugStatus] = useState(null);
   const debugCall = useRef(null);
   const mounted = useRef(true),
@@ -95,6 +96,7 @@ export default function GrokVoiceTest({ onCase, onDebug }) {
     setOutcome('');
     setAgreement(null);
     setPlatform(null);
+    setDocumentPlatform(null);
     setConfirmed(false);
     setStatus('Requesting microphone');
     try {
@@ -212,6 +214,8 @@ export default function GrokVoiceTest({ onCase, onDebug }) {
           }
           if (event.name === 'record_outcome' && event.result?.recorded === true)
             setOutcome(event.result.outcome || 'Recorded');
+          if (event.result?.documentRequested === true && event.result.platform?.caseId)
+            setDocumentPlatform(event.result.platform);
         } else if (['response.output_audio.delta', 'response.audio.delta'].includes(event.type)) {
           if (event.item_id && call.discardedAudioItems.has(event.item_id)) return;
           if (event.item_id) call.audioItems.add(event.item_id);
@@ -291,8 +295,39 @@ export default function GrokVoiceTest({ onCase, onDebug }) {
         platform={platform}
         onCase={onCase}
       />
+      {documentPlatform && (
+        <section
+          className="demo-payment-agreement"
+          aria-label="Saved document request"
+          role="status"
+        >
+          <h3>Document request saved</h3>
+          <p>
+            {documentPlatform.reference || 'Demo case'} · Helena will retrieve the requested
+            document.
+          </p>
+          <p>
+            End the test, then open Demo SMS conversations to see the follow-up. Delivery is
+            simulated.
+          </p>
+          {onCase && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => onCase(documentPlatform.caseId)}
+            >
+              Open saved case
+            </button>
+          )}
+        </section>
+      )}
       <section className="voice-test-sample" aria-label="Conversation ideas">
         <h3>Try a conversation</h3>
+        <p>
+          <strong>Document workflow:</strong> Play Ana Silva, confirm your name, ask “Can you send
+          me my original loan agreement?”, then click End test. Open Agents → Demo SMS conversations
+          to see Helena’s retrieval and Marina’s follow-up.
+        </p>
         <p>
           Ask about your balance, explain that you cannot pay, request a callback, dispute the debt,
           ask for a person, or say “Please stop contacting me.” Use your own words and follow-up

@@ -115,3 +115,19 @@ All 106 Node tests and 10 browser tests pass. Added tests cover transaction roll
 Actual OpenAI API smoke tests used synthetic, in-memory demo data with the existing local key. `gpt-5.6-luna` generated the initial follow-up, then a second run answered the first-installment question correctly from the saved agreement (R$416.67, September 21, 2026). Both jobs completed and produced the expected two outbound plus one inbound virtual messages. There was no physical SMS, Twilio call or email dispatch. OpenRouter and supervisor escalation were verified with mock providers, not live credentials/model requests.
 
 The local `.env` enables the virtual agent workflow and selects OpenAI Luna/Terra. `.env.example` leaves it opt-in. The app has been restarted; the next newly accepted voice-demo agreement can enter the workflow. Historical agreements are not bulk replayed. Uncertain call closure remains waiting rather than inventing an end event. This slice does not implement autonomous daily portfolio strategy or real two-way SMS transport.
+
+
+## Document librarian and virtual fulfillment — 2026-09-15
+
+Added case-scoped immutable text documents, demo seeds, exact-type retrieval by Helena, document requests from all three voice test adapters, and document-only source cases. The existing coordinator now handles post-call document jobs and routes attachments through Marina's virtual SMS conversation. Written replies can request another document and receive delivered evidence excerpts, with explicit truncation metadata. Agreement and document requests from one source share a case and conversation.
+
+Validation: 121 Node tests passed, including document-only HTTP end-to-end handoff, exact authenticated attachment download, cross-case rejection, missing/ambiguous documents, request deduplication, restart, later agreement attachment, and pause/STOP during generation. All 11 browser tests and the production build passed. A real configured OpenAI model generated a document follow-up in a synthetic in-memory workflow with the correct attachment; an earlier smoke invocation entered the bounded retry state, so this is not a latency/reliability benchmark. Human voice behavior still needs a fresh listening test.
+
+No real phone call, SMS, email or payment was initiated. Helena uses deterministic retrieval in this slice; external storage, PDF/OCR and real document release are not implemented. Workflow diagrams and future boundaries are maintained in WORKFLOWS.md.
+
+
+## Durable supervisor resolution, escalation tracking and card layout — 2026-09-15
+
+Marina now delegates uncertainty through a persisted Rafael job. Rafael reloads case evidence and can guide a Marina response, request document retrieval or retain an explicit waiting dependency. New enabled demo workflows do not create default human-review tasks. Payment reports remain unverified and collection restrictions are preserved. Historical review records are not silently rewritten. Escalation history retains original reasons, status, next steps and direct case/conversation links, including resolved work. Duplicate source events and repeated missing-document requests are bounded.
+
+Validation: all 136 Node tests, 17 browser tests and the production build passed. A real configured OpenAI smoke test on synthetic in-memory data exercised Rafael guidance followed by Marina presenting authorized installment options. No real call, SMS, email or payment was sent. Browser regressions verify waiting-state replies/rechecks, escalation navigation and filters, independent desktop card stacks, mobile ordering, keyboard expansion and no horizontal overflow. Desktop and mobile screenshots were inspected. Agent cards no longer leave empty grid rows when their heights differ or details expand.

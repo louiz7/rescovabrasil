@@ -75,14 +75,17 @@ export function openDb(path = ':memory:') {
 export const all = (db, sql, ...args) => db.prepare(sql).all(...args);
 export const one = (db, sql, ...args) => db.prepare(sql).get(...args);
 export const run = (db, sql, ...args) => db.prepare(sql).run(...args);
+let transactionSequence = 0;
 export function transaction(db, fn) {
-  db.exec('BEGIN IMMEDIATE');
+  const point = 'rescova_tx_' + ++transactionSequence;
+  db.exec('SAVEPOINT ' + point);
   try {
     const result = fn();
-    db.exec('COMMIT');
+    db.exec('RELEASE SAVEPOINT ' + point);
     return result;
   } catch (error) {
-    db.exec('ROLLBACK');
+    db.exec('ROLLBACK TO SAVEPOINT ' + point);
+    db.exec('RELEASE SAVEPOINT ' + point);
     throw error;
   }
 }

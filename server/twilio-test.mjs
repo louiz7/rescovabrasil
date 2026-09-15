@@ -34,7 +34,15 @@ export function validTestPublicUrl(value) {
 export function createTwilioTests(
   db,
   config,
-  { fetchImpl = fetch, ttlMs = 300000, onAgreement, onOutcome, voiceDebug, onEnded } = {},
+  {
+    fetchImpl = fetch,
+    ttlMs = 300000,
+    onAgreement,
+    onOutcome,
+    onDocument,
+    voiceDebug,
+    onEnded,
+  } = {},
 ) {
   db.exec(`CREATE TABLE IF NOT EXISTS twilio_test_calls (
     id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, owner TEXT NOT NULL,
@@ -241,6 +249,7 @@ export function createTwilioTests(
             'record_outcome',
             'get_test_context',
             'agree_payment_solution',
+            'request_case_document',
           ].includes(name),
           'Tool not allowed.',
         );
@@ -260,6 +269,17 @@ export function createTwilioTests(
         let result;
         try {
           result = executeTestTool(isolated, callId, name, safe);
+          if (result.documentRequested) {
+            assert(typeof onDocument === 'function', 'Document workflow is unavailable.', 503);
+            const platform = onDocument({
+              sessionId: callId,
+              kind: result.kind,
+              requestId: callIdKey,
+              destination: row(callId).destination,
+            });
+            assert(platform && !platform.error, 'Document request could not be saved.');
+            result = { ...result, platform };
+          }
           if (result.recorded && onOutcome) onOutcome({ sessionId: callId, args: safe });
           if (result.agreed && onAgreement)
             result = {

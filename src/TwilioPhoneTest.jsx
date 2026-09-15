@@ -267,6 +267,28 @@ export default function TwilioPhoneTest({ onCase, onDebug }) {
         platform={call?.platform || call?.agreement?.platform}
         onCase={onCase}
       />
+      {call?.platform?.documentRequestId && (
+        <section
+          className="demo-payment-agreement"
+          aria-label="Saved document request"
+          role="status"
+        >
+          <h3>Document request saved</h3>
+          <p>
+            {call.platform.reference || 'Demo case'} · Helena will retrieve the requested document.
+          </p>
+          <p>After the call ends, open Demo SMS conversations to see the simulated follow-up.</p>
+          {onCase && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => onCase(call.platform.caseId)}
+            >
+              Open saved case
+            </button>
+          )}
+        </section>
+      )}
       <label className="field">
         <span>Approved test number</span>
         <select

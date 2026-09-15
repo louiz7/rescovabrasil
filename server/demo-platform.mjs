@@ -1,14 +1,17 @@
 import { id, now, one, all, run, transaction, event, task } from './db.mjs';
-import { assert, dateOnly, email } from './domain.mjs';
+import { assert, dateOnly, email, validateOutcome } from './domain.mjs';
 import { demoPaymentOffers } from './demo-payment.mjs';
 import { recordOutcome } from './service.mjs';
+
+import { seedDemoDocuments } from './documents.mjs';
 
 const providers = new Set(['grok', 'openai', 'twilio']);
 const phonePattern = /^\+[1-9]\d{7,14}$/;
 const taskReason = 'Review demo payment agreement and prepare payment follow-up';
 const marker = 'Voice test demos';
 export function ensureDemoPlatform(db) {
-  db.exec(`CREATE TABLE IF NOT EXISTS demo_voice_results (
+  db.exec(`CREATE TABLE IF NOT EXISTS demo_voice_cases (provider TEXT NOT NULL, session_id TEXT NOT NULL, case_id TEXT NOT NULL REFERENCES cases(id), PRIMARY KEY(provider,session_id));
+  CREATE TABLE IF NOT EXISTS demo_voice_results (
     id TEXT PRIMARY KEY, session_id TEXT NOT NULL, provider TEXT NOT NULL,
     case_id TEXT NOT NULL REFERENCES cases(id), agreement_id TEXT NOT NULL,
     agreement_json TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -131,6 +134,97 @@ function persistedResult(db, result) {
     jobStatus: job?.status || null,
   };
 }
+export function ensureDemoVoiceCase(db, config, { provider, sessionId, destination } = {}) {
+  assert(config.mode === 'demo', 'Demo only.', 403);
+  assert(
+    providers.has(provider) &&
+      typeof sessionId === 'string' &&
+      /^[A-Za-z0-9_-]{1,100}$/.test(sessionId),
+    'Invalid demo source.',
+  );
+  if (destination)
+    assert(
+      provider === 'twilio' &&
+        phonePattern.test(destination) &&
+        config.allowlist?.includes(destination),
+      'Unauthorized demo recipient.',
+      403,
+    );
+  ensureDemoPlatform(db);
+  const previous =
+    one(
+      db,
+      'SELECT case_id FROM demo_voice_cases WHERE provider=? AND session_id=?',
+      provider,
+      sessionId,
+    ) ||
+    one(
+      db,
+      'SELECT case_id FROM demo_voice_results WHERE provider=? AND session_id=?',
+      provider,
+      sessionId,
+    );
+  if (previous) {
+    run(
+      db,
+      'INSERT OR IGNORE INTO demo_voice_cases VALUES (?,?,?)',
+      provider,
+      sessionId,
+      previous.case_id,
+    );
+    seedDemoDocuments(db, previous.case_id);
+    return {
+      caseId: previous.case_id,
+      reference: one(db, 'SELECT reference FROM cases WHERE id=?', previous.case_id).reference,
+    };
+  }
+  return transaction(db, () => {
+    let portfolio = one(
+      db,
+      "SELECT p.* FROM portfolios p JOIN settings s ON s.key='demo_voice_portfolio' AND s.value=p.id",
+    );
+    if (!portfolio) {
+      portfolio = { id: id() };
+      run(
+        db,
+        'INSERT INTO portfolios VALUES (?,?,?,?,?)',
+        portfolio.id,
+        marker,
+        'Banco Horizonte (fictional)',
+        'America/Sao_Paulo',
+        now(),
+      );
+      run(db, "INSERT OR REPLACE INTO settings VALUES ('demo_voice_portfolio',?)", portfolio.id);
+    }
+    const caseId = id(),
+      reference = `DEMO-${sessionId}`,
+      timestamp = now();
+    run(
+      db,
+      `INSERT INTO cases (id,portfolio_id,reference,name,phone,email,amount_minor,currency,timezone,language,status,review_required,identity_verified_at,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      caseId,
+      portfolio.id,
+      reference,
+      'Ana Silva',
+      destination || null,
+      'ana.silva@example.invalid',
+      125000,
+      'BRL',
+      'America/Sao_Paulo',
+      'en',
+      'new',
+      0,
+      timestamp,
+      timestamp,
+    );
+    run(db, 'INSERT INTO demo_voice_cases VALUES (?,?,?)', provider, sessionId, caseId);
+    seedDemoDocuments(db, caseId);
+    event(db, caseId, 'demo_voice_case_created', { provider, sessionId, demo: true }, 'demo');
+    return { caseId, reference };
+  });
+}
+
 export function persistDemoAgreement(
   db,
   config,
@@ -185,45 +279,14 @@ export function persistDemoAgreement(
           }
         : platform;
     }
-    let portfolio = one(
-      db,
-      "SELECT p.* FROM portfolios p JOIN settings s ON s.key='demo_voice_portfolio' AND s.value=p.id",
-    );
-    if (!portfolio) {
-      portfolio = { id: id() };
-      run(
-        db,
-        'INSERT INTO portfolios VALUES (?,?,?,?,?)',
-        portfolio.id,
-        marker,
-        'Banco Horizonte (fictional)',
-        'America/Sao_Paulo',
-        now(),
-      );
-      run(db, "INSERT OR REPLACE INTO settings VALUES ('demo_voice_portfolio',?)", portfolio.id);
-    }
-    const caseId = id(),
-      reference = `DEMO-${sessionId}`,
-      timestamp = now();
-    run(
-      db,
-      `INSERT INTO cases (id,portfolio_id,reference,name,phone,email,amount_minor,currency,timezone,language,status,review_required,identity_verified_at,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      caseId,
-      portfolio.id,
-      reference,
-      'Ana Silva',
-      destination || null,
-      'ana.silva@example.invalid',
-      125000,
-      'BRL',
-      'America/Sao_Paulo',
-      'en',
-      'review',
-      1,
-      savedAgreement.acceptedAt,
-      timestamp,
-    );
+    const { caseId, reference } = ensureDemoVoiceCase(db, config, {
+      provider,
+      sessionId,
+      destination,
+    });
+    const timestamp = now();
+    if (!config.agentWorkflowsEnabled)
+      run(db, "UPDATE cases SET status='review',review_required=1 WHERE id=?", caseId);
     const result = {
       id: id(),
       session_id: sessionId,
@@ -234,7 +297,7 @@ export function persistDemoAgreement(
       created_at: timestamp,
     };
     run(db, 'INSERT INTO demo_voice_results VALUES (?,?,?,?,?,?,?)', ...Object.values(result));
-    task(db, caseId, taskReason, timestamp, 'normal');
+    if (!config.agentWorkflowsEnabled) task(db, caseId, taskReason, timestamp, 'normal');
     const channel = destination ? 'sms' : 'email',
       followupDestination = destination || 'ana.silva@example.invalid',
       details = `DEMO ONLY — nonpayable payment link: https://payments.example.invalid/demo/${savedAgreement.id}\nDemo Pix: DEMO-PIX-NOT-PAYABLE (not a valid Pix key/code).`,
@@ -398,13 +461,33 @@ export function syncDemoOutcome(db, config, { sessionId, provider, args } = {}) 
   ensureDemoPlatform(db);
   const result = one(
     db,
-    'SELECT * FROM demo_voice_results WHERE provider=? AND session_id=?',
+    'SELECT * FROM demo_voice_cases WHERE provider=? AND session_id=?',
     provider,
     sessionId,
   );
   if (!result) return null;
   return transaction(db, () => {
-    recordOutcome(db, result.case_id, args, 'demo');
+    if (config.agentWorkflowsEnabled && !['opt_out', 'invalid_contact'].includes(args.outcome)) {
+      const value = validateOutcome(args);
+      const restricted = ['human_review', 'disputed', 'paid_reported'].includes(value.outcome);
+      run(
+        db,
+        'UPDATE cases SET outcome=?,willingness=?,ability=?,status=?,review_required=? WHERE id=?',
+        value.outcome,
+        value.willingness,
+        value.ability,
+        restricted ? 'review' : 'ready',
+        restricted ? 1 : 0,
+        result.case_id,
+      );
+      event(
+        db,
+        result.case_id,
+        'agent_resolution_requested',
+        { outcome: args.outcome, note: args.note || '', owner: 'supervisor' },
+        'demo',
+      );
+    } else recordOutcome(db, result.case_id, args, 'demo');
     if (
       ['opt_out', 'invalid_contact', 'disputed', 'human_review', 'paid_reported'].includes(
         args.outcome,
@@ -424,6 +507,11 @@ export function syncDemoOutcome(db, config, { sessionId, provider, args } = {}) 
       { provider, sessionId, outcome: args.outcome, demo: true },
       'demo',
     );
-    return persistedResult(db, result);
+    const agreementResult = one(
+      db,
+      'SELECT * FROM demo_voice_results WHERE case_id=?',
+      result.case_id,
+    );
+    return agreementResult ? persistedResult(db, agreementResult) : { caseId: result.case_id };
   });
 }

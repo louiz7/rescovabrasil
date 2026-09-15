@@ -1,10 +1,12 @@
 import { agentIdentities } from '../shared/agent-identities.mjs';
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Pause, Play, Send } from 'lucide-react';
+import { MessageSquare, Pause, Play, Send, Download, RefreshCw } from 'lucide-react';
 import './AgentConversations.css';
 
 const base = '/api/agent-workflows';
-const label = (value = '') => value.replaceAll('_', ' ');
+const label = (value = '') =>
+  value === 'human_review' ? 'Legacy review' : value.replaceAll('_', ' ');
+const supervisorStatuses = ['awaiting_information', 'awaiting_specialist', 'blocked_policy'];
 const time = (value) => (value ? new Date(value).toLocaleString() : '');
 async function request(path = '', body) {
   const response = await fetch(
@@ -22,9 +24,9 @@ async function request(path = '', body) {
   return data;
 }
 
-export default function AgentConversations({ caseId, onCase }) {
+export default function AgentConversations({ caseId, onCase, initialConversationId = '' }) {
   const [conversations, setConversations] = useState(null);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(initialConversationId);
   const [detail, setDetail] = useState(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,11 +36,11 @@ export default function AgentConversations({ caseId, onCase }) {
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   useEffect(() => {
-    setSelected('');
+    setSelected(initialConversationId);
     setDetail(null);
     setDraft('');
     pending.current = null;
-  }, [caseId]);
+  }, [caseId, initialConversationId]);
   useEffect(() => {
     let stopped = false;
     let timer;
@@ -97,11 +99,9 @@ export default function AgentConversations({ caseId, onCase }) {
   }
   const conversation = detail?.conversation;
   const status = conversation?.status;
-  const locked =
-    !conversation ||
-    ['paused', 'stopped', 'cancelled', 'closed', 'human_review', 'blocked', 'opted_out'].includes(
-      status,
-    );
+  const supervisorWaiting = supervisorStatuses.includes(status);
+  const resolution = conversation?.resolution;
+  const locked = !conversation || !['active', ...supervisorStatuses].includes(status);
   const working = (detail?.tasks || []).some((task) =>
     ['queued', 'running', 'pending', 'retrying'].includes(task.status),
   );
@@ -110,8 +110,8 @@ export default function AgentConversations({ caseId, onCase }) {
       <div className="info-box">
         <span>
           <strong>Virtual SMS · no real messages sent.</strong> After a demo call ends with an
-          accepted payment solution, the SMS agent takes over automatically. Reply as the person to
-          try the conversation.
+          accepted payment solution or document request, the SMS agent takes over automatically.
+          Reply as the person to try the conversation.
         </span>
       </div>
       {(error || loadError) && (
@@ -126,8 +126,8 @@ export default function AgentConversations({ caseId, onCase }) {
           <MessageSquare size={28} />
           <h3>No agent conversations yet</h3>
           <p>
-            Agree to a payment solution in a voice demo, then end the call. Its SMS follow-up will
-            appear here automatically.
+            Agree to a payment solution or request a case document in a voice demo, then end the
+            call. Its SMS follow-up will appear here automatically.
           </p>
         </div>
       ) : (
@@ -160,7 +160,7 @@ export default function AgentConversations({ caseId, onCase }) {
             <>
               <div className="agent-conversation-heading">
                 <div>
-                  <h3>{agentIdentities.payment_conversation_agent.name} · AI payment support</h3>
+                  <h3>{agentIdentities.payment_conversation_agent.name} · AI case support</h3>
                   <span className="agent-conversation-status">{label(status)}</span>
                 </div>
                 <div className="agent-conversation-actions">
@@ -206,6 +206,33 @@ export default function AgentConversations({ caseId, onCase }) {
                   )}
                 </div>
               </div>
+              {supervisorWaiting && (
+                <section className="agent-resolution" aria-label="Case resolution">
+                  <div className="agent-resolution-heading">
+                    <div>
+                      <strong>{agentIdentities.supervisor.name} · Case supervisor</strong>
+                      <span>{label(status)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy || working}
+                      onClick={() => act('recheck')}
+                    >
+                      <RefreshCw size={14} aria-hidden="true" /> Recheck case
+                    </button>
+                  </div>
+                  <p>{resolution?.reason || 'Rafael owns the next step for this case.'}</p>
+                  {resolution?.nextAction && (
+                    <p>
+                      <strong>Next step:</strong> {resolution.nextAction}
+                    </p>
+                  )}
+                  <small>
+                    You can reply with additional information while the case is waiting.
+                  </small>
+                </section>
+              )}
               <ol className="agent-message-list" aria-label="SMS messages">
                 {(detail.messages || []).map((message) => {
                   const incoming = message.direction === 'inbound' || message.role === 'user';
@@ -223,6 +250,20 @@ export default function AgentConversations({ caseId, onCase }) {
                         <span>{time(message.createdAt || message.created_at)}</span>
                       </div>
                       <p>{message.text || message.content || message.body}</p>
+                      {(message.documents || []).map((document) => (
+                        <a
+                          key={document.id}
+                          className="agent-message-document"
+                          href={`/api/cases/${encodeURIComponent(conversation.caseId || caseId)}/documents/${encodeURIComponent(document.id)}/content`}
+                          download
+                        >
+                          <Download size={15} aria-hidden="true" />
+                          <span>
+                            {document.title || 'Case document'}
+                            <small>Download · Version {document.version || 1}</small>
+                          </span>
+                        </a>
+                      ))}
                       <span className="agent-message-delivery">
                         {incoming ? 'Received in demo' : 'Sent in virtual SMS'}
                       </span>
@@ -253,7 +294,9 @@ export default function AgentConversations({ caseId, onCase }) {
                 <p className="info-box">
                   {status === 'paused'
                     ? 'The conversation is paused. Resume the agent to continue this demo.'
-                    : 'Automated messages are stopped for this conversation. Check the case for the next step.'}
+                    : status === 'human_review'
+                      ? 'This conversation is in legacy review from an earlier workflow. Check the case for its recorded next step.'
+                      : 'Automated messages are stopped for this conversation. Check the case for the next step.'}
                 </p>
               )}
               <form

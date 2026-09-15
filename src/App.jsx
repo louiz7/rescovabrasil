@@ -1,5 +1,6 @@
 import AgentsOverview from './AgentsOverview';
 import AgentConversations from './AgentConversations';
+import CaseDocuments from './CaseDocuments';
 import PortfolioDetail from './PortfolioDetail';
 import VoiceDebug from './VoiceDebug';
 import PaymentFollowups from './PaymentFollowups';
@@ -699,7 +700,12 @@ export default function App() {
                 />
               )}
               {page === 'agents' && (
-                <AgentsOverview onConversations={() => setModal({ type: 'agentConversations' })} />
+                <AgentsOverview
+                  onConversations={(conversationId) =>
+                    setModal({ type: 'agentConversations', conversationId })
+                  }
+                  onCase={(id) => setModal({ type: 'case', id })}
+                />
               )}
               {page === 'settings' && (
                 <SettingsPage
@@ -802,6 +808,7 @@ export default function App() {
               onClose={() => setModal(null)}
             >
               <AgentConversations
+                initialConversationId={modal.conversationId || ''}
                 onCase={(id) => setModal({ type: 'case', id, tab: 'conversations' })}
               />
             </Modal>
@@ -2007,6 +2014,7 @@ function CaseModal({ id, onClose, onChanged, initialTab = 'history' }) {
                 ['review', 'Case review'],
                 ['payments', `Payment follow-ups (${c.paymentFollowups?.length || 0})`],
                 ['conversations', 'Conversations'],
+                ['documents', 'Documents'],
               ].map(([key, label]) => (
                 <button
                   key={key}
@@ -2152,6 +2160,7 @@ function CaseModal({ id, onClose, onChanged, initialTab = 'history' }) {
               </form>
             )}
             {tab === 'conversations' && <AgentConversations caseId={id} />}
+            {tab === 'documents' && <CaseDocuments caseId={id} onChanged={load} />}
             {tab === 'payments' && (
               <PaymentFollowups
                 agreements={c.paymentAgreements || []}

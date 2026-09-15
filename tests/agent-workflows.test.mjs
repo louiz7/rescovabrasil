@@ -155,7 +155,12 @@ test('stop during generation cancels reply before simulated delivery', async (t)
 test('unrelated review blocks automatic fulfillment; changed payment terms cancel a stale draft', async (t) => {
   const f = await fixture(t);
   const { conversationId: c } = f.workflow.agreementSaved(f.input);
-  run(f.db, "UPDATE tasks SET reason='Identity concern' WHERE case_id=?", f.saved.caseId);
+  run(
+    f.db,
+    "INSERT INTO tasks (id,case_id,reason,due_at,created_at) VALUES ('identity-check',?,'Identity concern',datetime('now'),datetime('now'))",
+    f.saved.caseId,
+  );
+  run(f.db, 'UPDATE cases SET review_required=1 WHERE id=?', f.saved.caseId);
   f.workflow.sourceEnded('openai', 'workflow-test');
   await f.workflow.tick();
   assert.equal(f.workflow.detail(c).conversation.status, 'blocked');
@@ -174,16 +179,39 @@ test('unrelated review blocks automatic fulfillment; changed payment terms cance
   assert.equal(g.workflow.detail(d).messages.length, 0);
   assert.equal(g.workflow.detail(d).tasks[0].status, 'cancelled');
 });
-test('payment report creates review without reducing balance; pause cancels pending work', async (t) => {
-  const f = await fixture(t, async () => ({
-    action: 'paid_reported',
-    text: 'Your report needs verification.',
-    reason: 'Payment reported',
-  }));
+test('payment report awaits specialist verification without reducing balance; pause cancels pending work', async (t) => {
+  let supervisorCalls = 0;
+  const f = await fixture(t, async ({ supervisor }) => {
+    if (supervisor) {
+      supervisorCalls++;
+      return {
+        action: 'awaiting_specialist',
+        text: '',
+        reason: 'Payment requires verified reconciliation',
+        nextAction: 'Obtain payment confirmation from the lender.',
+      };
+    }
+    return {
+      action: 'paid_reported',
+      text: 'Your report needs verification.',
+      reason: 'Payment reported',
+    };
+  });
+  const previousTaskCount = one(
+    f.db,
+    'SELECT COUNT(*) n FROM tasks WHERE case_id=?',
+    f.saved.caseId,
+  ).n;
   const { conversationId: c } = f.workflow.agreementSaved(f.input);
   f.workflow.sourceEnded('openai', 'workflow-test');
   await f.workflow.tick();
-  assert.equal(f.workflow.detail(c).conversation.status, 'human_review');
+  await f.workflow.tick();
+  assert.equal(supervisorCalls, 1);
+  assert.equal(f.workflow.detail(c).conversation.status, 'awaiting_specialist');
+  assert.equal(
+    one(f.db, 'SELECT COUNT(*) n FROM tasks WHERE case_id=?', f.saved.caseId).n,
+    previousTaskCount,
+  );
   const item = one(f.db, 'SELECT * FROM cases WHERE id=?', f.saved.caseId);
   assert.equal(item.outcome, 'paid_reported');
   assert.equal(item.amount_minor, 125000);

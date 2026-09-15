@@ -13,6 +13,7 @@ import express from 'express';
 import { createVoiceDebug } from './voice-debug.mjs';
 import {
   ensureDemoPlatform,
+  ensureDemoVoiceCase,
   syncDemoOutcome,
   persistDemoAgreement,
   getCasePaymentData,
@@ -97,10 +98,31 @@ export function createApp(
           },
         )
       : null;
+  const saveDemoDocument = (provider) => (details) => {
+    assert(
+      config.mode === 'demo' && config.agentWorkflowsEnabled,
+      'Demo document workflows are disabled.',
+      403,
+    );
+    return transaction(db, () => {
+      const saved = ensureDemoVoiceCase(db, config, { ...details, provider });
+      return {
+        ...saved,
+        ...agentWorkflows.documentRequested({ ...details, provider, caseId: saved.caseId }),
+      };
+    });
+  };
   const saveDemoOutcome = (provider) => (details) => {
     if (config.mode !== 'demo') return null;
+    const source =
+      config.agentWorkflowsEnabled &&
+      ['human_review', 'disputed', 'paid_reported', 'opt_out', 'invalid_contact'].includes(
+        details.args?.outcome,
+      )
+        ? ensureDemoVoiceCase(db, config, { ...details, provider })
+        : null;
     const result = syncDemoOutcome(db, config, { ...details, provider });
-    agentWorkflows.outcomeChanged({ ...details, provider });
+    agentWorkflows.outcomeChanged({ ...details, provider, caseId: source?.caseId });
     return result;
   };
   const sourceEnded = (provider) => (sessionId) => {
@@ -110,6 +132,7 @@ export function createApp(
   const twilioTests = createTwilioTests(db, config, {
     fetchImpl: twilioFetch,
     onAgreement: saveDemoAgreement('twilio'),
+    onDocument: saveDemoDocument('twilio'),
     onOutcome: saveDemoOutcome('twilio'),
     onEnded: sourceEnded('twilio'),
     voiceDebug,
@@ -334,18 +357,21 @@ export function createApp(
     fetchImpl: voiceFetch,
     ttlMs: voiceTestTtlMs,
     onAgreement: saveDemoAgreement('openai'),
+    onDocument: saveDemoDocument('openai'),
     onOutcome: saveDemoOutcome('openai'),
     onEnded: sourceEnded('openai'),
   });
   app.locals.voiceTests = voiceTests;
   app.use('/api/voice-test', voiceTests.router);
   app.use('/api/voice-debug', voiceDebug.router);
+  app.use('/api/cases/:caseId/documents', agentWorkflows.library.router);
   app.use('/api/agent-workflows', agentWorkflows.router);
   app.get('/api/agents', (_req, res) => res.json(agentRegistry(config, agentWorkflows)));
   const grokTests = createGrokVoiceTests(config, {
     connect: grokConnect,
     ttlMs: grokTestTtlMs,
     onAgreement: saveDemoAgreement('grok'),
+    onDocument: saveDemoDocument('grok'),
     onOutcome: saveDemoOutcome('grok'),
     onEnded: sourceEnded('grok'),
   });

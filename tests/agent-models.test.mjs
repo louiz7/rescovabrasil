@@ -128,7 +128,8 @@ test('one supervisor escalation uses independently configured provider and retai
     },
   );
   const result = await run(request);
-  assert.equal(result.action, 'human_review');
+  assert.equal(result.action, 'blocked_policy');
+  assert.doesNotMatch(result.text, /team member|human review|referred/i);
   assert.deepEqual(
     result.runs.map((value) => value.role),
     ['sms', 'supervisor'],
@@ -138,7 +139,7 @@ test('one supervisor escalation uses independently configured provider and retai
     { openaiKey: 'first' },
     { fetchImpl: async () => responses(decision('escalate_supervisor')) },
   );
-  await assert.rejects(loop(request), { code: 'invalid_output' });
+  assert.equal((await loop(request)).action, 'blocked_policy');
 });
 
 test('provider output cannot add domain mutations or unbounded content', async () => {
@@ -223,4 +224,75 @@ test('URL and history validation reject untrusted instructions, external HTTP an
     { code: 'input' },
   );
   await assert.rejects(run({ context: { giant: 'a'.repeat(32769) } }), { code: 'input' });
+});
+
+test('deferred legacy escalation produces one run without an unavailable human promise', async () => {
+  let calls = 0;
+  const run = createAgentRunner(
+    { openaiKey: 'key' },
+    {
+      fetchImpl: async () => {
+        calls++;
+        return responses({
+          action: 'human_review',
+          text: 'A team member will contact you.',
+          reason: 'Need context.',
+        });
+      },
+    },
+  );
+  const result = await run({ ...request, deferSupervisor: true });
+  assert.equal(calls, 1);
+  assert.equal(result.action, 'escalate_supervisor');
+  assert.equal(result.text, '');
+  assert.equal(result.runs.length, 1);
+  assert.equal(result.runs[0].role, 'sms');
+});
+
+test('supervisor accepts recoverable task states with fresh resolution context', async () => {
+  for (const action of ['awaiting_information', 'awaiting_specialist', 'blocked_policy']) {
+    let captured;
+    const run = createAgentRunner(
+      { openaiKey: 'key' },
+      {
+        fetchImpl: async (_, init) => {
+          captured = JSON.parse(init.body);
+          return responses({
+            action,
+            text: 'The original agreement is not available yet.',
+            reason: 'Need lender document source.',
+          });
+        },
+      },
+    );
+    const result = await run({
+      ...request,
+      supervisor: true,
+      deferSupervisor: true,
+      context: { supervisorResolution: true, missingDocument: { status: 'missing' } },
+    });
+    assert.equal(result.action, action);
+    assert.equal(result.runs[0].role, 'supervisor');
+    assert.match(captured.input[0].content, /supervisorResolution/);
+    assert.match(captured.instructions, /do not repeat that retrieval/);
+    assert.match(captured.instructions, /no configured human channel/);
+  }
+});
+
+test('supervisor payment report awaits verification and cannot confirm payment', async () => {
+  const run = createAgentRunner(
+    { openaiKey: 'key' },
+    {
+      fetchImpl: async () =>
+        responses({
+          action: 'paid_reported',
+          text: 'A person will verify this.',
+          reason: 'Reported paid.',
+        }),
+    },
+  );
+  const result = await run({ ...request, supervisor: true });
+  assert.equal(result.action, 'awaiting_specialist');
+  assert.match(result.text, /not yet been confirmed/);
+  assert.doesNotMatch(result.text, /person|human/);
 });

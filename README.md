@@ -171,3 +171,19 @@ The provider adapter returns normalized decisions (`reply`, `paid_reported`, `op
 Agreement persistence and the follow-up job are committed together. The job waits for observed source-session closure. Interrupted model generation is retryable; messages are committed once per logical job. Conversation pause preserves pending work, contact stop cancels it, and current case/payment state is checked again after generation. Initial payment details are rendered from the saved agreement; model text is checked for unrecognized links, monetary amounts and ISO dates. These checks do not constitute a general semantic guarantee for arbitrary model text.
 
 The voice-demo portfolio remains blocked for prospecting. Virtual agreement fulfillment has a narrow authorization for the original demo-review task; disputes, opt-outs, unrelated human review and portfolio pause still block it. Existing physical SMS/email drafts remain drafts. Historical agreements are not automatically replayed into new messages. Twilio two-way SMS delivery, a daily autonomous portfolio planner and automatic payment reconciliation remain future integrations.
+
+
+### Document librarian demo
+
+Start a new Browser voice test, confirm Ana Silva and ask for the original loan agreement or account statement. After the request is saved, end the call and open **Demo SMS conversations**. Helena retrieves the case document and Marina supplies an authenticated attachment in the virtual inbox. A payment agreement is not required. Ask follow-up questions or request the other document in the same conversation.
+
+The case **Documents** tab supports plain-text uploads up to 100 KiB, versioned by title and type. Helena currently uses deterministic case/type retrieval; Marina uses the configured text model. Delivery remains virtual. External repositories, PDF/OCR and real document sending are future integrations.
+
+See [workflow diagrams](docs/WORKFLOWS.md) for implemented flows, task states and the planned architecture.
+
+
+### Agent-owned resolution and escalation tracking
+
+Unresolved virtual conversations now create a durable task for Rafael. He reloads the case, approved options and document catalog, then guides Marina, requests Helena, or records an explicit information/specialist/policy dependency. No automatic human task is created by the new virtual exception flow. Waiting participants can add clarification, relevant evidence changes can wake the task, and **Recheck case** requests a fresh evaluation. Contact stops and payment-verification restrictions remain enforced.
+
+Open **Agents → Supervisor escalations** to see original reasons, case/conversation links, current status and next action, including resolved entries. Search this history to identify recurring capability or context gaps. Historical manual review records remain unchanged.
