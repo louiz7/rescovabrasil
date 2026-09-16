@@ -16,12 +16,18 @@
     "maintenance": "node --experimental-sqlite --env-file-if-exists=.env scripts/maintenance.mjs",
     "benchmark": "node --experimental-sqlite scripts/benchmark.mjs",
     "format": "prettier --write src server scripts tests *.mjs *.json",
-    "format:check": "prettier --check src server scripts tests *.mjs *.json"
+    "format:check": "prettier --check src server scripts tests *.mjs *.json",
+    "gmail:connect": "node --env-file-if-exists=.env scripts/gmail-connect.mjs",
+    "worker": "node --experimental-sqlite --env-file-if-exists=.env server/worker.mjs",
+    "migrate:postgres": "node --experimental-sqlite --env-file-if-exists=.env scripts/migrate-postgres.mjs",
+    "benchmark:workers": "node --experimental-sqlite --env-file-if-exists=.env scripts/benchmark-workers.mjs"
   },
   "dependencies": {
     "exceljs": "4.4.0",
     "express": "5.2.1",
     "lucide-react": "0.462.0",
+    "pdfjs-dist": "^6.3.289",
+    "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "ws": "8.21.3"

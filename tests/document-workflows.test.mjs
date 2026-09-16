@@ -85,7 +85,8 @@ test('document-only handoff waits for end, survives restart, deduplicates and re
   assert.equal(detail.messages[0].documents.length, 1);
   assert.equal(detail.messages[0].documents[0].kind, 'loan_agreement');
   assert.equal(detail.messages[0].status, 'simulated_delivered');
-  assert.match(seen[0].context.documentResult.content, /FICTIONAL DEMO/);
+  assert.equal(seen[0].context.documentResult.contentAvailableVia, 'document_content');
+  assert.equal(seen[0].context.documentResult.content, undefined);
   assert.equal(seen[0].context.agreement, null);
   f.workflow.documentRequested(f.input);
   f.end();
@@ -94,7 +95,8 @@ test('document-only handoff waits for end, survives restart, deduplicates and re
   await f.post(`/${c}/messages`, { text: 'What does the document say?', requestId: 'reply-one' });
   await f.workflow.tick();
   assert.equal(seen[1].context.deliveredDocuments.length, 1);
-  assert.match(seen[1].context.deliveredDocuments[0].content, /FICTIONAL DEMO/);
+  assert.equal(seen[1].context.deliveredDocuments[0].content, undefined);
+  assert.ok(seen[1].context.availableLookups.includes('document_content'));
   assert.equal(one(f.db, 'SELECT COUNT(*) AS n FROM attempts').n, 0);
 });
 
@@ -129,7 +131,7 @@ test('agreement accepted later reuses document case and conversation and preserv
 });
 
 for (const state of ['missing', 'ambiguous'])
-  test(`${state} document routes to supervisor resolution without attachment`, async (t) => {
+  test(`${state} document remains an owned dependency without attachment or needless model calls`, async (t) => {
     let modelCalls = 0;
     const f = await fixture(t, async (input) => {
       modelCalls++;
@@ -159,13 +161,14 @@ for (const state of ['missing', 'ambiguous'])
     await f.workflow.tick();
     await f.workflow.tick();
     const detail = f.workflow.detail(c);
-    assert.equal(detail.conversation.status, 'awaiting_information');
+    assert.equal(detail.conversation.status, 'active');
+    assert.equal(detail.tasks[0].status, 'waiting_document');
     assert.equal(detail.messages.flatMap((m) => m.documents).length, 0);
     assert.equal(
       one(f.db, 'SELECT status FROM document_requests WHERE id=?', documentRequestId).status,
       state,
     );
-    assert.equal(modelCalls, 1);
+    assert.equal(modelCalls, 0);
     assert.equal(
       one(f.db, 'SELECT review_required FROM cases WHERE id=?', f.saved.caseId).review_required,
       0,

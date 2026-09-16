@@ -138,6 +138,7 @@ test('escalation history filters and opens the exact conversation', async ({ pag
   await page.getByLabel('Workspace password').fill('browser-test-password');
   await page.getByRole('button', { name: 'Sign in to workspace' }).click();
   await page.getByRole('button', { name: 'Agents', exact: true }).click();
+  await page.getByRole('button', { name: 'View Rafael', exact: true }).click();
   const section = page.getByRole('region', { name: 'Supervisor escalations' });
   await expect(section.getByText('Payment options were missing.')).toBeVisible();
   await section.getByLabel('Escalation status').selectOption('open');
@@ -154,42 +155,46 @@ test('escalation history filters and opens the exact conversation', async ({ pag
   );
 });
 
-test('agent cards stack independently and retain original mobile order', async ({ page }) => {
+test('agent directory, detail and team map stay focused and usable on mobile', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Workspace password').fill('browser-test-password');
   await page.getByRole('button', { name: 'Sign in to workspace' }).click();
   await page.getByRole('button', { name: 'Agents', exact: true }).click();
-  const columns = page.locator('.agents-column');
-  await expect(columns).toHaveCount(2);
-  const first = columns.nth(0).locator('.agent-card').first();
-  const neighbor = columns.nth(1).locator('.agent-card').first();
-  const next = columns.nth(1).locator('.agent-card').nth(1);
-  const before = await neighbor.boundingBox();
-  const nextBefore = await next.boundingBox();
-  const summary = first.locator('summary');
-  await summary.focus();
-  await page.keyboard.press('Enter');
-  await expect(first.locator('details')).toHaveAttribute('open', '');
-  const after = await neighbor.boundingBox();
-  const nextAfter = await next.boundingBox();
-  expect(after.height).toBe(before.height);
-  expect(nextAfter.y).toBe(nextBefore.y);
-  expect(Math.round(nextAfter.y - after.y - after.height)).toBe(20);
-  await page.screenshot({ path: '/tmp/rescova-agents-stacks-desktop.png', fullPage: true });
+  await expect(page.locator('.team-card')).toHaveCount(5);
+  await expect(page.getByRole('region', { name: 'Supervisor escalations' })).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/rescova-team-desktop.png', fullPage: true });
+  await page.getByRole('button', { name: 'View Marina', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Current work', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Responsibilities', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Setup', exact: true })).toBeVisible();
+  await page.screenshot({ path: '/tmp/rescova-agent-detail.png', fullPage: true });
+  await page.getByRole('button', { name: 'All agents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Team map', exact: true }).click();
+  await expect(page.locator('.team-map-node')).toHaveCount(5);
+  await page.getByRole('button', { name: 'Shared case context Application service' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Shared case context’s connections' }),
+  ).toBeVisible();
+  await expect(page.locator('.team-edge-list').getByText('Payment ledger')).toBeVisible();
+  await page.locator('.team-map-node').filter({ hasText: 'Marina' }).click();
+  await expect(page.getByRole('heading', { name: 'Marina’s connections' })).toBeVisible();
+  await page.locator('.team-map-node').filter({ hasText: 'Rafael' }).click();
+  await expect(page.getByRole('heading', { name: 'Rafael’s connections' })).toBeVisible();
+  await page.screenshot({ path: '/tmp/rescova-team-map.png', fullPage: true });
+  await page.getByRole('button', { name: 'View agent', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Supervisor escalations' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
-  const positions = await page
-    .locator('.agent-card')
-    .evaluateAll((cards) =>
-      cards
-        .map((card) => ({ order: Number(card.style.order), y: card.getBoundingClientRect().y }))
-        .sort((a, b) => a.y - b.y),
-    );
-  expect(positions.map((item) => item.order)).toEqual(positions.map((_, index) => index));
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
   ).toBeTruthy();
-  await page.screenshot({ path: '/tmp/rescova-agents-stacks-mobile.png', fullPage: true });
-  await summary.focus();
-  await page.keyboard.press('Enter');
-  await expect(first.locator('details')).not.toHaveAttribute('open', '');
+  await page.getByRole('button', { name: 'All agents', exact: true }).click();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+  ).toBeTruthy();
+  await page.getByRole('tab', { name: 'Team', exact: true }).click();
+  await expect(page.locator('.team-card')).toHaveCount(5);
+  await page.screenshot({ path: '/tmp/rescova-team-mobile.png', fullPage: true });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+  ).toBeTruthy();
 });

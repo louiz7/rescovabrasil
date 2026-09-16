@@ -80,7 +80,7 @@ export default function AgentConversations({ caseId, onCase, initialConversation
               if (!pending.current || pending.current.text !== text || pending.current.id !== id) {
                 pending.current = { id, text, requestId: crypto.randomUUID() };
               }
-              return { text, requestId: pending.current.requestId };
+              return { text, requestId: pending.current.requestId, channel: 'virtual_sms' };
             })()
           : {};
       const next = await request('/' + encodeURIComponent(id) + '/' + action, body);
@@ -98,6 +98,11 @@ export default function AgentConversations({ caseId, onCase, initialConversation
     }
   }
   const conversation = detail?.conversation;
+  const isEmail =
+    conversation?.channel === 'email' ||
+    (detail?.messages || []).some(
+      (message) => message.channel === 'email' || message.delivery?.channel === 'email',
+    );
   const status = conversation?.status;
   const supervisorWaiting = supervisorStatuses.includes(status);
   const resolution = conversation?.resolution;
@@ -109,9 +114,19 @@ export default function AgentConversations({ caseId, onCase, initialConversation
     <section className="agent-conversations" aria-label="Agent conversations">
       <div className="info-box">
         <span>
-          <strong>Virtual SMS · no real messages sent.</strong> After a demo call ends with an
-          accepted payment solution or document request, the SMS agent takes over automatically.
-          Reply as the person to try the conversation.
+          {isEmail ? (
+            <>
+              <strong>Shared case history · Email and demo SMS.</strong> Marina keeps the same case
+              context across channels. Reply in Gmail or use the demo SMS composer below. Track
+              email delivery in <a href="?emailTest=1">Email test</a>.
+            </>
+          ) : (
+            <>
+              <strong>Virtual SMS · no real messages sent.</strong> After a demo call ends with an
+              accepted payment solution or document request, Marina takes over automatically using
+              the requested channel. Reply below to test SMS with the same case context.
+            </>
+          )}
         </span>
       </div>
       {(error || loadError) && (
@@ -127,7 +142,7 @@ export default function AgentConversations({ caseId, onCase, initialConversation
           <h3>No agent conversations yet</h3>
           <p>
             Agree to a payment solution or request a case document in a voice demo, then end the
-            call. Its SMS follow-up will appear here automatically.
+            call. Its follow-up and delivery status will appear here automatically.
           </p>
         </div>
       ) : (
@@ -150,6 +165,7 @@ export default function AgentConversations({ caseId, onCase, initialConversation
                 <option key={item.id} value={item.id}>
                   {item.caseName || item.debtorName || item.caseReference || item.caseId} ·{' '}
                   {label(item.status)}
+                  {item.channel === 'email' ? ' · Email' : ''}
                 </option>
               ))}
             </select>
@@ -229,11 +245,12 @@ export default function AgentConversations({ caseId, onCase, initialConversation
                     </p>
                   )}
                   <small>
-                    You can reply with additional information while the case is waiting.
+                    You can reply by demo SMS or in the existing email thread while the case is
+                    waiting.
                   </small>
                 </section>
               )}
-              <ol className="agent-message-list" aria-label="SMS messages">
+              <ol className="agent-message-list" aria-label="Case messages">
                 {(detail.messages || []).map((message) => {
                   const incoming = message.direction === 'inbound' || message.role === 'user';
                   return (
@@ -265,7 +282,11 @@ export default function AgentConversations({ caseId, onCase, initialConversation
                         </a>
                       ))}
                       <span className="agent-message-delivery">
-                        {incoming ? 'Received in demo' : 'Sent in virtual SMS'}
+                        {message.channel === 'email' || message.delivery?.channel === 'email'
+                          ? `Email · ${incoming ? 'received' : label(message.delivery?.status || 'pending delivery')}`
+                          : incoming
+                            ? 'Demo SMS · received'
+                            : 'Demo SMS · simulated delivery'}
                       </span>
                     </li>
                   );
@@ -299,6 +320,13 @@ export default function AgentConversations({ caseId, onCase, initialConversation
                       : 'Automated messages are stopped for this conversation. Check the case for the next step.'}
                 </p>
               )}
+              {isEmail && (
+                <p className="info-box">
+                  Email replies and demo SMS share this case history. No real SMS is sent from this
+                  composer. Use <a href="?emailTest=1">Email test</a> to check replies or pause
+                  email delivery.
+                </p>
+              )}
               <form
                 className="agent-reply"
                 onSubmit={(event) => {
@@ -323,7 +351,7 @@ export default function AgentConversations({ caseId, onCase, initialConversation
                   disabled={busy || locked || !draft.trim()}
                 >
                   <Send size={15} />
-                  {busy ? 'Sending…' : 'Send demo reply'}
+                  {busy ? 'Sending…' : isEmail ? 'Send demo SMS' : 'Send demo reply'}
                 </button>
               </form>
               <details className="agent-workflow-details">

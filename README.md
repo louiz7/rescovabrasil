@@ -106,23 +106,16 @@ Configure these values in the local `.env`, then restart the server:
 
 The panel reports configuration presence, not provider credentials or network reachability verification. The app submits per-call voice/status callback URLs automatically. **End call** requests Twilio termination; closing the panel leaves the call running and you can reopen it. An uncertain provider response blocks another call until reconciliation; retrying the same request never redials. When local voice debugging is enabled, this harness records incoming and outbound audio for local Whisper transcription. Test call status, recipient number and derived tool results are retained locally.
 
-## Grok browser voice test
-
-Open `http://127.0.0.1:5173/?grokTest=1` or choose **Grok browser test** on Overview. Set `XAI_API_KEY` in `.env`, then restart `npm run dev`. Optional `XAI_VOICE_MODEL` defaults to `grok-voice-latest`, and `XAI_VOICE` defaults to `eve`. The test speaks English and uses the fictional Ana Silva case with session-local name confirmation, outcome recording and state lookup tools.
-
-Browser microphone audio passes through the authenticated app WebSocket to xAI. The permanent API key stays on the server. No Twilio call is made. Microphone access requires localhost or HTTPS. A test lasts at most five minutes; end it or close the panel to release audio and provider connections. Your xAI account needs voice API access and billing. See the [official xAI Speech to Speech documentation](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech).
-
-
 ## Demo payment solutions
 
-All three isolated voice tests share the fictional payment catalog in `examples/demo-payment-offers.json`: 10% discount for payment today (BRL1,125 on a BRL1,250 balance), or three/six interest-free monthly installments totaling BRL1,250, beginning in seven days. Dates follow the case timezone, America/Sao_Paulo. Integer minor-unit arithmetic distributes centavos exactly and month-end dates are clamped to the target month's final day.
+The GPT Live browser and Twilio voice tests share the fictional payment catalog in `examples/demo-payment-offers.json`: 10% discount for payment today (BRL1,125 on a BRL1,250 balance), or three/six interest-free monthly installments totaling BRL1,250, beginning in seven days. Dates follow the case timezone, America/Sao_Paulo. Integer minor-unit arithmetic distributes centavos exactly and month-end dates are clamped to the target month's final day.
 
 The existing identity and outcome functions remain, with `agree_payment_solution` added as an action and `get_test_context` retained for state/offer lookup. After self-reported identity confirmation, the agent receives current dated offers, briefly summarizes the selected total, payment amounts/count, frequency and first/final dates, then submits the selected offer ID with `accepted:true` after one clear contextual acceptance. Equal payments may be grouped; centavo differences and date exceptions stay exact. Reading every month aloud and asking for a second confirmation are not required. Consent already given survives backend delegation. The application computes terms and rejects unknown/customized offers, unconfirmed identity, blocked contact or conflicting agreements. The same offer can be retried without creating another agreement. Only fictional test data is affected; no payment is taken, no real contract is created, and no balance is cleared. Accepted agreements in the demo workspace now create a durable case under Voice test demos, a review task, and an unsent payment follow-up draft. Audio and transcripts are retained only when local voice debugging is enabled. The Twilio harness also retains its derived agreement with the test call record. Production campaign behavior is unchanged.
 
 
 ## Platform cases and payment follow-up drafts
 
-An accepted agreement in an OpenAI, Grok or Twilio demo test creates one idempotent platform case per provider/session. The case includes the agreement schedule and an open review task. Browser tests use the synthetic email ana.silva@example.invalid; Twilio tests use the authorized test phone for an SMS draft. Payment instructions default to an explicitly nonpayable example.invalid link and the invalid placeholder DEMO-PIX-NOT-PAYABLE.
+An accepted agreement in an OpenAI or Twilio demo test creates one idempotent platform case per provider/session. The case includes the agreement schedule and an open review task. Browser tests use the synthetic email ana.silva@example.invalid; Twilio tests use the authorized test phone for an SMS draft. Payment instructions default to an explicitly nonpayable example.invalid link and the invalid placeholder DEMO-PIX-NOT-PAYABLE.
 
 Open the saved case to inspect or edit the follow-up channel (SMS/email), recipient and payment instructions. Saving regenerates the preview; missing values block readiness, and cancellation is supported. These jobs are reviewable drafts, are never claimed by the campaign dispatcher, and cannot send messages. An opt-out, dispute, wrong contact, human-review request or reported payment after acceptance updates the saved case and cancels pending follow-ups. Existing imported cases are not modified by the demo session.
 
@@ -134,7 +127,7 @@ Managed Responses delegation is the single return path for ordinary tool results
 
 ## Local Whisper voice debugging
 
-With `VOICE_DEBUG_ENABLED=true`, new OpenAI and Grok browser tests and the isolated Twilio phone test record both speakers and queue local transcription when the test ends. On Overview, open **Voice debug** to select a session, replay each speaker, inspect timestamped Whisper segments and tool events, or delete its recordings and transcript. End the browser test and allow uploads to finish before closing the browser tab. Browser recording requires MediaRecorder; OpenAI assistant playback additionally requires audio captureStream support (use Chrome/Chromium).
+With `VOICE_DEBUG_ENABLED=true`, new GPT Live browser tests and the isolated Twilio phone test record both speakers and queue local transcription when the test ends. On Overview, open **Voice debug** to select a session, replay each speaker, inspect timestamped Whisper segments and tool events, or delete its recordings and transcript. End the browser test and allow uploads to finish before closing the browser tab. Browser recording requires MediaRecorder; OpenAI assistant playback additionally requires audio captureStream support (use Chrome/Chromium).
 
 Configure `WHISPER_PYTHON` to the existing local Python executable containing Whisper, `WHISPER_MODEL` to an existing cached model directory, `FFMPEG_PATH` to ffmpeg, and optionally `VOICE_DEBUG_DIR` (default `data/voice-debug`). This machine uses MLX Whisper 0.4.3 from the existing evaluation virtual environment and its cached whisper-small-mlx model. The worker runs offline, with automatic language detection and no cloud transcription fallback or model download. Voice conversations themselves still use their selected OpenAI/xAI provider.
 
@@ -187,3 +180,24 @@ See [workflow diagrams](docs/WORKFLOWS.md) for implemented flows, task states an
 Unresolved virtual conversations now create a durable task for Rafael. He reloads the case, approved options and document catalog, then guides Marina, requests Helena, or records an explicit information/specialist/policy dependency. No automatic human task is created by the new virtual exception flow. Waiting participants can add clarification, relevant evidence changes can wake the task, and **Recheck case** requests a fresh evaluation. Contact stops and payment-verification restrictions remain enforced.
 
 Open **Agents → Supervisor escalations** to see original reasons, case/conversation links, current status and next action, including resolved entries. Search this history to identify recurring capability or context gaps. Historical manual review records remain unchanged.
+
+
+### Google Workspace email demo
+
+Ask the voice agent to send the loan agreement **by email**: after call end, Helena and Marina fulfill the request automatically. **Email test** on Overview or Agents monitors delivery; its manual send control is optional for older conversations. Continue through Gmail or use **Send demo SMS** in the same case conversation; Marina retains the same context and offers. Sender and recipient are fixed to `louiz@rescova.de`. Set the prepared Gmail OAuth variables, run `npm run gmail:connect`, enable `EMAIL_TEST_ENABLED`, and restart. No SendGrid account, DNS changes or ngrok required. Full setup and call → document → email reply → installment acceptance test: [docs/EMAIL_TEST.md](docs/EMAIL_TEST.md).
+
+### PostgreSQL workers and document retrieval
+
+PostgreSQL supports durable parallel background workers with case ownership and recovery. The API can run workers locally or use separate `npm run worker` processes. Deployment, migration, health checks and measured mock throughput: [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+Open a case's document library to upload a text file or PDF. Background ingestion extracts text and runs local OCR when needed. Marina can request case-scoped document passages from Helena, with document/version/page evidence, through the provider-neutral lookup interface. Retrieval configuration and current limits: [docs/RETRIEVAL.md](docs/RETRIEVAL.md).
+
+
+### Agentic roadmap and readiness
+
+Overview now reports recorded outreach by Calling, SMS and Email; Agent tasks exposes existing agent/worker jobs and unresolved dependencies. Legacy follow-ups remain separate until migrated to executable agent workflows. The next infrastructure milestones, owned-receivable payment model and example situations are in [docs/AGENTIC_ROADMAP.md](docs/AGENTIC_ROADMAP.md). [docs/ASSESSMENT.md](docs/ASSESSMENT.md) tracks current maturity and must be refreshed after every substantial change.
+
+
+### Document fulfillment tickets
+
+New document requests now create one durable ticket across Helena retrieval, Marina composition and delivery. Open **Agent tasks → View ticket** for the pinned version, dependencies, retry budget and provider submission evidence. Full browser-call → document email → cross-channel continuation test: [docs/DOCUMENT_TICKET_TEST.md](docs/DOCUMENT_TICKET_TEST.md). Missing documents resume when available; uncertain sends are held rather than resent. Historical requests remain unchanged.

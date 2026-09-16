@@ -336,8 +336,11 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
             document.
           </p>
           <p>
-            End the test, then open Demo SMS conversations to see the follow-up. Delivery is
-            simulated.
+            {documentPlatform.delivery?.status === 'awaiting_configuration'
+              ? 'Email requested. Delivery is waiting for email configuration.'
+              : documentPlatform.delivery?.channel === 'email'
+                ? 'Email follow-up is queued for after the call ends. Track delivery in the case conversation.'
+                : 'After the call ends, open Demo SMS conversations to see the simulated follow-up.'}
           </p>
           {onCase && (
             <button

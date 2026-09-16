@@ -1,6 +1,8 @@
-import { Router } from 'express';
+import { Router, raw } from 'express';
+import { indexDocument, ensureDocumentSearch } from './document-search.mjs';
+import { createDocumentIngestion } from './document-ingestion.mjs';
 import { createHash } from 'node:crypto';
-import { id, now, one, all, run, event } from './db.mjs';
+import { id, now, one, all, run, event, transaction } from './db.mjs';
 
 const kinds = new Set(['loan_agreement', 'account_statement']);
 const fail = (status, message) => {
@@ -21,7 +23,11 @@ function requireCase(db, caseId) {
   if (!row) fail(404, 'Case not found');
   return row;
 }
-function insertDocument(db, caseId, { title, kind, content, source = 'operator_demo_upload' }) {
+function insertDocumentRecord(
+  db,
+  caseId,
+  { title, kind, content, source = 'operator_demo_upload', maxBytes = 100 * 1024, sourceChecksum },
+) {
   requireCase(db, caseId);
   if (!kinds.has(kind)) fail(400, 'Unsupported document kind');
   if (typeof title !== 'string' || !title.trim() || title.trim().length > 160)
@@ -29,11 +35,11 @@ function insertDocument(db, caseId, { title, kind, content, source = 'operator_d
   if (
     typeof content !== 'string' ||
     !content.trim() ||
-    Buffer.byteLength(content, 'utf8') > 100 * 1024
+    Buffer.byteLength(content, 'utf8') > maxBytes
   )
     fail(400, 'Document content must be nonempty plain text, at most 100 KB');
   title = title.trim();
-  const checksum = createHash('sha256').update(content).digest('hex');
+  const checksum = sourceChecksum || createHash('sha256').update(content).digest('hex');
   const prior = one(
     db,
     'SELECT * FROM case_documents WHERE case_id=? AND kind=? AND title=? ORDER BY version DESC LIMIT 1',
@@ -62,7 +68,15 @@ function insertDocument(db, caseId, { title, kind, content, source = 'operator_d
     title,
     version: (prior?.version || 0) + 1,
   });
-  return one(db, 'SELECT * FROM case_documents WHERE id=?', documentId);
+  const document = one(db, 'SELECT * FROM case_documents WHERE id=?', documentId);
+  indexDocument(db, document);
+  return document;
+}
+function insertDocument(db, caseId, document) {
+  return transaction(db, () => {
+    if (db.dialect === 'postgres') one(db, 'SELECT id FROM cases WHERE id=? FOR UPDATE', caseId);
+    return insertDocumentRecord(db, caseId, document);
+  });
 }
 const metadata = ({ content, ...document }) => document;
 
@@ -98,6 +112,10 @@ export function seedDemoDocuments(db, caseId) {
 
 export function createDocumentLibrary(db, config) {
   schema(db);
+  ensureDocumentSearch(db);
+  const ingestion = createDocumentIngestion(db, config, (caseId, document) =>
+    insertDocument(db, caseId, document),
+  );
   const demo = () => {
     if (config.mode !== 'demo')
       fail(409, 'Document workflow is currently available in demo mode only');
@@ -110,6 +128,7 @@ export function createDocumentLibrary(db, config) {
         'SELECT * FROM case_documents WHERE case_id=? ORDER BY created_at DESC,version DESC',
         caseId,
       ).map(metadata),
+      ingestions: ingestion.list(caseId),
       requests: all(
         db,
         'SELECT * FROM document_requests WHERE case_id=? ORDER BY created_at DESC',
@@ -206,13 +225,52 @@ export function createDocumentLibrary(db, config) {
   router.get('/', (req, res) => res.json(list(req.params.caseId)));
   router.post('/', (req, res) => {
     demo();
+    res.status(201).json({
+      document: metadata(
+        insertDocument(db, req.params.caseId, {
+          title: req.body.title,
+          kind: req.body.kind,
+          content: req.body.content,
+          source: 'operator_demo_upload',
+        }),
+      ),
+    });
+  });
+  router.post('/upload', raw({ type: 'application/pdf', limit: '10mb' }), async (req, res) => {
+    demo();
+    const job = await ingestion.enqueue(req.params.caseId, req.query, req.body);
+    res.status(202).json({ ingestion: { id: job.id, status: job.status } });
+  });
+  router.post('/ingestions/:id/retry', (req, res) => {
+    demo();
+    requireCase(db, req.params.caseId);
+    const job = one(
+      db,
+      'SELECT * FROM document_ingestions WHERE id=? AND case_id=?',
+      req.params.id,
+      req.params.caseId,
+    );
+    if (!job) fail(404, 'Ingestion not found');
+    if (!['needs_ocr', 'failed'].includes(job.status))
+      fail(409, 'Only failed or blocked ingestion can be retried');
+    run(
+      db,
+      "UPDATE document_ingestions SET status='queued',error=NULL,updated_at=? WHERE id=?",
+      now(),
+      job.id,
+    );
+    res.status(202).json({ status: 'queued' });
+  });
+  router.get('/:id/original', async (req, res) => {
+    requireCase(db, req.params.caseId);
+    const bytes = await ingestion.original(req.params.caseId, req.params.id);
+    if (!bytes) fail(404, 'Original PDF not found in this case');
     res
-      .status(201)
-      .json({
-        document: metadata(
-          insertDocument(db, req.params.caseId, { ...req.body, source: 'operator_demo_upload' }),
-        ),
-      });
+      .set('Cache-Control', 'no-store')
+      .set('X-Content-Type-Options', 'nosniff')
+      .attachment('document.pdf')
+      .type('application/pdf')
+      .send(bytes);
   });
   router.get('/:id/content', (req, res) => {
     requireCase(db, req.params.caseId);
@@ -238,11 +296,24 @@ export function createDocumentLibrary(db, config) {
       ]),
     );
     return {
-      running: 0,
-      queued: counts.pending || 0,
+      running: one(
+        db,
+        "SELECT COUNT(*) AS count FROM document_ingestions WHERE status='processing'",
+      ).count,
+      queued:
+        (counts.pending || 0) +
+        one(db, "SELECT COUNT(*) AS count FROM document_ingestions WHERE status='queued'").count,
       failed: (counts.missing || 0) + (counts.ambiguous || 0),
       completed: counts.ready || 0,
     };
   }
-  return { router, list, request, resolve, stats };
+  return {
+    router,
+    list,
+    request,
+    resolve,
+    stats,
+    drainIngestion: ingestion.drain,
+    closeIngestion: ingestion.close,
+  };
 }

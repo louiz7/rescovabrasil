@@ -196,7 +196,7 @@ for (const status of ['awaiting_information', 'awaiting_specialist', 'blocked_po
   });
 }
 
-test('missing requested evidence goes to Rafael with retrieval result instead of a human task', async (t) => {
+test('missing requested evidence stays with Helena without unnecessary supervisor execution', async (t) => {
   const seen = [];
   const f = await fixture(t, async (input) => {
     seen.push(input);
@@ -205,10 +205,9 @@ test('missing requested evidence goes to Rafael with retrieval result instead of
   run(f.db, "DELETE FROM case_documents WHERE case_id=? AND kind='loan_agreement'", f.saved.caseId);
   const c = await f.start();
   await f.drain();
-  assert.equal(seen.length, 1);
-  assert.equal(seen[0].supervisor, true);
-  assert.ok(seen[0].context.supervisorResolution.missingDocument);
-  assert.equal(f.workflow.detail(c).conversation.status, 'awaiting_information');
+  assert.equal(seen.length, 0);
+  assert.equal(f.workflow.detail(c).conversation.status, 'active');
+  assert.equal(f.workflow.detail(c).tasks[0].status, 'waiting_document');
   assert.equal(f.workflow.detail(c).messages.flatMap((m) => m.documents).length, 0);
   noHumanTask(f);
 });
@@ -319,7 +318,7 @@ test('voice referral waits for source end and remains a single tracked escalatio
   noHumanTask(f);
 });
 
-test('Rafael cannot create an endless chain by requesting the same missing evidence', async (t) => {
+test('missing evidence does not create a supervisor retry chain', async (t) => {
   let calls = 0;
   const f = await fixture(t, async (input) => {
     assert.equal(input.supervisor, true);
@@ -333,15 +332,16 @@ test('Rafael cannot create an endless chain by requesting the same missing evide
   run(f.db, "DELETE FROM case_documents WHERE case_id=? AND kind='loan_agreement'", f.saved.caseId);
   const c = await f.start();
   await f.drain();
-  assert.equal(calls, 1);
-  assert.equal(f.workflow.detail(c).conversation.status, 'awaiting_information');
+  assert.equal(calls, 0);
+  assert.equal(f.workflow.detail(c).conversation.status, 'active');
+  assert.equal(f.workflow.detail(c).tasks[0].status, 'waiting_document');
   assert.ok(!f.workflow.detail(c).tasks.some((j) => ['queued', 'running'].includes(j.status)));
   await f.drain();
-  assert.equal(calls, 1);
+  assert.equal(calls, 0);
   noHumanTask(f);
 });
 
-test('uploading missing evidence automatically wakes Rafael and permits fresh retrieval', async (t) => {
+test('uploading missing evidence automatically wakes Helena and permits fresh retrieval', async (t) => {
   let supervisorCalls = 0;
   const f = await fixture(t, async (input) => {
     if (input.supervisor) {
@@ -358,15 +358,16 @@ test('uploading missing evidence automatically wakes Rafael and permits fresh re
   run(f.db, "DELETE FROM case_documents WHERE case_id=? AND kind='loan_agreement'", f.saved.caseId);
   const c = await f.start();
   await f.drain();
-  assert.equal(f.workflow.detail(c).conversation.status, 'awaiting_information');
-  assert.equal(supervisorCalls, 1);
+  assert.equal(f.workflow.detail(c).conversation.status, 'active');
+  assert.equal(f.workflow.detail(c).tasks[0].status, 'waiting_document');
+  assert.equal(supervisorCalls, 0);
   const created = await f.post(`/documents/${f.saved.caseId}`, {
     title: 'Newly located demo loan agreement',
     kind: 'loan_agreement',
     content: 'FICTIONAL DEMO: newly located original agreement.',
   });
   await f.drain();
-  assert.equal(supervisorCalls, 2);
+  assert.equal(supervisorCalls, 0);
   const detail = f.workflow.detail(c);
   assert.equal(detail.conversation.status, 'active');
   assert.ok(detail.messages.flatMap((m) => m.documents).some((d) => d.id === created.document.id));

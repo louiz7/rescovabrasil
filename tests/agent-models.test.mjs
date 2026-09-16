@@ -296,3 +296,95 @@ test('supervisor payment report awaits verification and cannot confirm payment',
   assert.match(result.text, /not yet been confirmed/);
   assert.doesNotMatch(result.text, /person|human/);
 });
+
+test('case lookups use the same strict provider contract without escalating or sending a reply', async () => {
+  for (const provider of ['openai', 'openrouter']) {
+    let captured;
+    const value = {
+      action: 'lookup_case_information',
+      text: '',
+      reason: 'Look up the recorded creditor.',
+      lookupTopic: 'document_search',
+      lookupQuery: 'early repayment',
+      lookupDocumentId: null,
+      lookupOffset: 0,
+    };
+    const run = createAgentRunner(
+      { agentSms: { provider, apiKey: 'test-key', model: 'test-model' } },
+      {
+        fetchImpl: async (_, init) => {
+          captured = JSON.parse(init.body);
+          return provider === 'openai' ? responses(value) : completions(value);
+        },
+      },
+    );
+    const result = await run({
+      ...request,
+      deferSupervisor: true,
+      context: { case: { id: 'case-one' }, availableLookups: ['case_details'], lookupResults: [] },
+    });
+    assert.equal(result.action, 'lookup_case_information');
+    assert.equal(result.lookupTopic, 'document_search');
+    assert.equal(result.lookupQuery, 'early repayment');
+    assert.equal(result.lookupOffset, 0);
+    assert.equal(result.text, '');
+    assert.equal(result.runs.length, 1);
+    const schema =
+      provider === 'openai'
+        ? captured.text.format.schema
+        : captured.response_format.json_schema.schema;
+    for (const key of ['lookupTopic', 'lookupDocumentId', 'lookupOffset', 'lookupQuery'])
+      assert.ok(schema.required.includes(key));
+    assert.ok(schema.properties.lookupTopic.enum.includes('conversation_history'));
+    assert.equal(schema.properties.lookupOffset.minimum, 0);
+    const instructions =
+      provider === 'openai' ? captured.instructions : captured.messages[0].content;
+    assert.match(instructions, /not every case record/);
+    assert.match(instructions, /Never repeat the same topic\/document\/offset/);
+    assert.doesNotMatch(instructions, /context.caseKnowledge/);
+  }
+});
+
+test('case lookup validation rejects arbitrary topics, invalid offsets and missing document IDs', async () => {
+  const base = {
+    action: 'lookup_case_information',
+    text: '',
+    reason: 'Retrieve evidence.',
+    lookupTopic: 'case_details',
+  };
+  for (const value of [
+    { ...base, lookupTopic: 'document_search' },
+    { ...base, lookupTopic: 'document_search', lookupQuery: ' ' },
+    { ...base, lookupTopic: 'document_search', lookupQuery: 'x'.repeat(501) },
+    { ...base, lookupTopic: 'sql' },
+    { ...base, lookupTopic: null },
+    { ...base, lookupOffset: -1 },
+    { ...base, lookupOffset: 1.5 },
+    { ...base, lookupOffset: '0' },
+    { ...base, lookupTopic: 'document_content' },
+    { ...base, lookupTopic: 'document_content', lookupDocumentId: ' ' },
+    { ...decision(), lookupTopic: 'case_details' },
+  ]) {
+    const run = createAgentRunner(
+      { openaiKey: 'key' },
+      { fetchImpl: async () => responses(value) },
+    );
+    await assert.rejects(run(request), { code: 'invalid_output' });
+  }
+  const run = createAgentRunner(
+    { openaiKey: 'key' },
+    {
+      fetchImpl: async () =>
+        responses({
+          ...base,
+          lookupTopic: 'document_content',
+          lookupDocumentId: 'known-document',
+          lookupOffset: 4000,
+        }),
+    },
+  );
+  const result = await run({ ...request, supervisor: true });
+  assert.equal(result.lookupDocumentId, 'known-document');
+  assert.equal(result.lookupOffset, 4000);
+  assert.equal(result.runs[0].role, 'supervisor');
+});

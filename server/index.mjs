@@ -1,3 +1,4 @@
+import { startWorkerRuntime } from './worker-runtime.mjs';
 import { reconcilePortfolios } from './portfolio-operations.mjs';
 import { createServer } from 'node:http';
 import { openDb, one, run } from './db.mjs';
@@ -32,11 +33,13 @@ const app = createApp(db, config),
   server = createServer(app),
   wss = attachRealtime(server, db, config),
   testWss = attachTwilioTest(server, app.locals.twilioTests, config);
-app.locals.grokTests.attach(server);
 let busy = false;
-const agentTick = setInterval(() => {
-  void app.locals.agentWorkflows.tick().catch(() => console.error('Agent workflow tick failed.'));
-}, 1000);
+const workerRuntime = config.appWorkersEnabled
+  ? startWorkerRuntime(db, config, {
+      agents: app.locals.agentWorkflows,
+      email: app.locals.emailWorkflows,
+    })
+  : null;
 const tick = setInterval(async () => {
   if (busy || config.mode !== 'live' || !config.liveEnabled) return;
   busy = true;
@@ -71,17 +74,18 @@ server.listen(config.port, config.host, () =>
 );
 async function shutdown() {
   clearInterval(tick);
-  clearInterval(agentTick);
+
   clearInterval(maintenance);
   for (const client of wss.clients) client.close();
   for (const client of testWss.clients) client.close();
-  await Promise.all([
-    app.locals.voiceTests.closeAll(),
-    app.locals.twilioTests.closeAll(),
-    app.locals.grokTests.closeAll(),
-  ]);
+  await Promise.all([app.locals.voiceTests.closeAll(), app.locals.twilioTests.closeAll()]);
   await app.locals.voiceDebug.closeAll();
-  await app.locals.agentWorkflows.closeAll();
+  if (workerRuntime) await workerRuntime.close();
+  else {
+    await app.locals.emailWorkflows.closeAll();
+    await app.locals.agentWorkflows.closeAll();
+    await app.locals.agentWorkflows.library.closeIngestion?.();
+  }
   server.close(() => {
     db.close();
     process.exit(0);

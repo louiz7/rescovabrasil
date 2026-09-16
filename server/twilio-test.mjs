@@ -5,7 +5,12 @@ import { isIP } from 'node:net';
 import { id, now, one, all, run, transaction } from './db.mjs';
 import { assert, AppError } from './domain.mjs';
 import { validTwilio, xmlEscape } from './providers.mjs';
-import { browserTestCase, isolatedDatabase, executeTestTool } from './browser-voice.mjs';
+import {
+  browserTestCase,
+  isolatedDatabase,
+  executeTestTool,
+  withPaymentStatus,
+} from './browser-voice.mjs';
 
 const terminal = new Set(['completed', 'busy', 'no-answer', 'canceled', 'failed']);
 const ranks = { starting: 0, queued: 1, initiated: 2, ringing: 3, 'in-progress': 4 };
@@ -40,6 +45,7 @@ export function createTwilioTests(
     onAgreement,
     onOutcome,
     onDocument,
+    onPaymentStatus,
     voiceDebug,
     onEnded,
   } = {},
@@ -268,12 +274,18 @@ export function createTwilioTests(
           );
         let result;
         try {
-          result = executeTestTool(isolated, callId, name, safe);
+          result = withPaymentStatus(
+            executeTestTool(isolated, callId, name, safe),
+            name,
+            callId,
+            onPaymentStatus,
+          );
           if (result.documentRequested) {
             assert(typeof onDocument === 'function', 'Document workflow is unavailable.', 503);
             const platform = onDocument({
               sessionId: callId,
               kind: result.kind,
+              deliveryChannel: result.deliveryChannel,
               requestId: callIdKey,
               destination: row(callId).destination,
             });

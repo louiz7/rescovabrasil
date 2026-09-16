@@ -46,26 +46,37 @@ export default function CaseDocuments({ caseId, onChanged }) {
     if (busy || !file) return;
     setError('');
     setNotice('');
-    if (!file.name.toLowerCase().endsWith('.txt') || file.size > maxBytes) {
-      setError('Choose a plain text (.txt) file up to 100 KB.');
+    const pdf = file.name.toLowerCase().endsWith('.pdf');
+    if (
+      (!pdf && !file.name.toLowerCase().endsWith('.txt')) ||
+      file.size > (pdf ? 10 * 1024 * 1024 : maxBytes)
+    ) {
+      setError('Choose text up to 100 KB or a PDF up to 10 MB.');
       return;
     }
     setBusy(true);
     try {
-      const content = await file.text();
-      if (!content.trim() || content.includes('\0'))
+      const content = pdf ? null : await file.text();
+      if (!pdf && (!content.trim() || content.includes('\0')))
         throw new Error('Choose a non-empty plain text document.');
-      const response = await fetch(base, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), kind, content }),
-      });
+      const response = await fetch(
+        pdf ? `${base}/upload?${new URLSearchParams({ title: title.trim(), kind })}` : base,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': pdf ? 'application/pdf' : 'application/json' },
+          body: pdf ? file : JSON.stringify({ title: title.trim(), kind, content }),
+        },
+      );
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not upload the document.');
       setTitle('');
       setFile(null);
       if (fileInput.current) fileInput.current.value = '';
-      setNotice('Demo document uploaded. Helena can retrieve it for this case.');
+      setNotice(
+        pdf
+          ? 'PDF queued for extraction and indexing. Processing status appears below.'
+          : 'Demo document uploaded. Helena can retrieve it for this case.',
+      );
       const refreshed = await fetch(base);
       if (refreshed.ok) setData(await refreshed.json());
       onChanged?.();
@@ -87,8 +98,8 @@ export default function CaseDocuments({ caseId, onChanged }) {
             Case library <span>Demo only</span>
           </h3>
           <p>
-            Helena retrieves case documents for the conversation team. Document delivery is
-            simulated; nothing is sent externally.
+            Helena retrieves case documents for the conversation team. Relevant passages are
+            retrieved on demand. Configured email workflows can deliver requested documents.
           </p>
         </div>
       </div>
@@ -139,6 +150,33 @@ export default function CaseDocuments({ caseId, onChanged }) {
           ))}
         </ul>
       )}
+      {data?.ingestions?.length > 0 && (
+        <ul className="case-document-requests" aria-label="Document processing">
+          {data.ingestions.map((job) => (
+            <li key={job.id}>
+              <div>
+                <strong>{job.title}</strong>
+                <small>{label(job.status)}</small>
+                {job.error && <p className="error">{job.error}</p>}
+              </div>
+              {['failed', 'needs_ocr'].includes(job.status) && (
+                <button
+                  className="secondary"
+                  onClick={async () => {
+                    const response = await fetch(`${base}/ingestions/${job.id}/retry`, {
+                      method: 'POST',
+                    });
+                    if (!response.ok)
+                      setError((await response.json()).error || 'Could not retry extraction');
+                  }}
+                >
+                  Retry extraction
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       <form className="case-document-upload" onSubmit={upload}>
         <h4>Add a demo document</h4>
         <div className="case-document-fields">
@@ -165,11 +203,11 @@ export default function CaseDocuments({ caseId, onChanged }) {
           </label>
         </div>
         <label className="field">
-          <span>Plain text file · .txt, up to 100 KB</span>
+          <span>Text up to 100 KB or PDF up to 10 MB · 50 pages</span>
           <input
             ref={fileInput}
             type="file"
-            accept=".txt,text/plain"
+            accept=".txt,.pdf,text/plain,application/pdf"
             required
             disabled={busy}
             onChange={(e) => setFile(e.target.files?.[0] || null)}

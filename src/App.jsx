@@ -1,10 +1,13 @@
+import OutreachActivity from './OutreachActivity';
+import DocumentTicket from './DocumentTicket';
+import EmailTest from './EmailTest';
 import AgentsOverview from './AgentsOverview';
 import AgentConversations from './AgentConversations';
 import CaseDocuments from './CaseDocuments';
+import CasePayments from './CasePayments';
 import PortfolioDetail from './PortfolioDetail';
 import VoiceDebug from './VoiceDebug';
 import PaymentFollowups from './PaymentFollowups';
-import GrokVoiceTest from './GrokVoiceTest';
 import TwilioPhoneTest from './TwilioPhoneTest';
 import BrowserVoiceTest from './BrowserVoiceTest';
 import legacyLabels from './legacy-display.json';
@@ -97,7 +100,7 @@ const NAV = [
   ['overview', 'Overview', LayoutDashboard],
   ['portfolios', 'Portfolios', FolderOpen],
   ['cases', 'Cases', Users],
-  ['tasks', 'Follow-ups', ListTodo],
+  ['tasks', 'Agent tasks', ListTodo],
   ['agents', 'Agents', Sparkles],
   ['settings', 'Settings', Settings],
 ];
@@ -241,7 +244,7 @@ function Modal({ title, subtitle, children, onClose, wide = false }) {
             <X size={20} />
           </button>
         </header>
-        {children}
+        <div className="modal-content">{children}</div>
       </section>
     </div>
   );
@@ -258,8 +261,8 @@ export default function App() {
         ? { type: 'browserVoiceTest' }
         : new URLSearchParams(window.location.search).get('twilioTest') === '1'
           ? { type: 'twilioPhoneTest' }
-          : new URLSearchParams(window.location.search).get('grokTest') === '1'
-            ? { type: 'grokVoiceTest' }
+          : new URLSearchParams(window.location.search).get('emailTest') === '1'
+            ? { type: 'emailTest' }
             : null,
     ),
     [toast, setToast] = useState(''),
@@ -393,7 +396,6 @@ export default function App() {
             >
               <Icon size={19} />
               <span>{label}</span>
-              {id === 'tasks' && d?.openTasks > 0 && <b>{d.openTasks}</b>}
             </button>
           ))}
         </nav>
@@ -460,7 +462,7 @@ export default function App() {
                       overview: 'Every conversation, a new way forward.',
                       portfolios: 'Your portfolios, all in one place.',
                       cases: 'The people behind every case.',
-                      tasks: 'The next step starts here.',
+                      tasks: 'Agent work, in one queue.',
                       agents: 'Your agents, working together.',
                       settings: 'Your operation, your settings.',
                     }[page]
@@ -473,7 +475,8 @@ export default function App() {
                       portfolios:
                         'Activate ongoing outreach, track progress, and manage exceptions.',
                       cases: 'Explore contacts, track responses, and follow up with people.',
-                      tasks: 'Turn responses into actions for your team.',
+                      tasks:
+                        'Track ownership, execution and the next action for every agent workflow.',
                       agents: 'See responsibilities, models, and ongoing work.',
                       settings: 'Channels, schedules, and rules for responsible outreach.',
                     }[page]
@@ -519,7 +522,7 @@ export default function App() {
                   onConversations={() => setModal({ type: 'agentConversations' })}
                   onVoiceTest={() => setModal({ type: 'browserVoiceTest' })}
                   onPhoneTest={() => setModal({ type: 'twilioPhoneTest' })}
-                  onGrokTest={() => setModal({ type: 'grokVoiceTest' })}
+                  onEmailTest={() => setModal({ type: 'emailTest' })}
                   onDebug={(id) =>
                     setModal({
                       type: 'voiceDebug',
@@ -695,12 +698,16 @@ export default function App() {
               {page === 'tasks' && (
                 <Tasks
                   tasks={data.tasks}
+                  onConversation={(conversationId) =>
+                    setModal({ type: 'agentConversations', conversationId })
+                  }
                   onTask={(task) => setModal({ type: 'task', task })}
                   onCase={(id) => setModal({ type: 'case', id })}
                 />
               )}
               {page === 'agents' && (
                 <AgentsOverview
+                  onEmailTest={() => setModal({ type: 'emailTest' })}
                   onConversations={(conversationId) =>
                     setModal({ type: 'agentConversations', conversationId })
                   }
@@ -813,6 +820,20 @@ export default function App() {
               />
             </Modal>
           )}
+          {modal.type === 'emailTest' && (
+            <Modal
+              title="Email test"
+              subtitle="Marina · Google Workspace email"
+              wide
+              onClose={() => setModal(null)}
+            >
+              <EmailTest
+                onConversation={(conversationId) =>
+                  setModal({ type: 'agentConversations', conversationId })
+                }
+              />
+            </Modal>
+          )}
           {modal.type === 'voiceDebug' && (
             <Modal
               title="Voice debug"
@@ -821,24 +842,6 @@ export default function App() {
               onClose={() => setModal(null)}
             >
               <VoiceDebug initialId={modal.debugId || ''} />
-            </Modal>
-          )}
-          {modal.type === 'grokVoiceTest' && (
-            <Modal
-              title="Grok browser test"
-              subtitle="Talk to Grok using your microphone and a fictional case"
-              onClose={() => setModal(null)}
-            >
-              <GrokVoiceTest
-                onDebug={(id) =>
-                  setModal({ type: 'voiceDebug', debugId: typeof id === 'string' ? id : undefined })
-                }
-                onCase={(id) => {
-                  refresh();
-                  loadCases();
-                  setModal({ type: 'case', id, tab: 'payments' });
-                }}
-              />
             </Modal>
           )}
           {modal.type === 'twilioPhoneTest' && (
@@ -1016,12 +1019,33 @@ function Overview({
   onVoiceTest,
   onConversations,
   onPhoneTest,
-  onGrokTest,
+  onEmailTest,
   onDebug,
 }) {
+  const [agentTasks, setAgentTasks] = useState(null);
+  const [taskError, setTaskError] = useState('');
+  useEffect(() => {
+    let active = true;
+    const load = () =>
+      api('/agent-tasks?state=ready&limit=3')
+        .then((value) => {
+          if (active) {
+            setAgentTasks(value);
+            setTaskError('');
+          }
+        })
+        .catch((e) => {
+          if (active) setTaskError(e.message);
+        });
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
   const d = data.dashboard,
-    max = Math.max(1, ...d.daily.map((v) => v.count)),
-    open = data.tasks.filter((t) => t.status === 'open'),
+    open = agentTasks?.rows || [],
     ratio = d.cases ? Math.round((d.responses / d.cases) * 100) : 0;
   return (
     <>
@@ -1050,12 +1074,12 @@ function Overview({
             <MessageSquare size={17} />
             Demo SMS conversations
           </button>
+          <button className="secondary" onClick={onEmailTest}>
+            <Mail size={17} />
+            Email test
+          </button>
           <button className="secondary" onClick={onDebug}>
             Voice debug
-          </button>
-          <button className="secondary" onClick={onGrokTest}>
-            <Headphones size={17} />
-            Grok browser test
           </button>
           <button className="primary" onClick={onVoiceTest}>
             <Headphones size={17} />
@@ -1075,10 +1099,10 @@ function Overview({
           detail={`${d.portfolios} portfolios in this workspace`}
         />
         <Stat
-          label="Contact attempts"
-          value={number(d.attempts)}
+          label="Outreach attempts · 14 days"
+          value={number(d.outreach?.total || 0)}
           icon={Radio}
-          detail={`${d.delivered} deliveries or answered calls`}
+          detail="Calls, SMS and email · recorded activity"
         />
         <Stat
           label="Confirmed contacts"
@@ -1087,76 +1111,16 @@ function Overview({
           detail="Name confirmed by self-report"
         />
         <Stat
-          label="Needs human attention"
-          value={number(d.openTasks)}
+          label="Tasks ready now"
+          value={agentTasks ? number(agentTasks.total) : '–'}
           icon={ListTodo}
-          detail="Follow-ups that need your team"
+          detail="Due or running · future reminders shown separately"
           accent
           onClick={() => navigate('tasks')}
         />
       </div>
       <div className="dashboard-middle">
-        <section className="card activity-card">
-          <div className="section-title">
-            <div>
-              <h2>Outreach activity</h2>
-              <p>Attempts per day · up to 14 active days</p>
-            </div>
-            <span className="chart-key">
-              <i />
-              Contacts
-            </span>
-          </div>
-          <div className="chart-summary">
-            <strong>{number(d.attempts)}</strong>
-            <span>
-              total attempts
-              <br />
-              <small>{d.mode === 'demo' ? 'Simulated activity' : 'Recorded activity'}</small>
-            </span>
-          </div>
-          {d.daily.length ? (
-            <div
-              className="bar-chart"
-              role="img"
-              aria-label={d.daily.map((v) => `${v.day}: ${v.count} attempts`).join('; ')}
-            >
-              <div className="chart-grid">
-                <span>{max}</span>
-                <span>{Math.ceil(max / 2)}</span>
-                <span>0</span>
-              </div>
-              <div className="chart-bars">
-                {d.daily.map((v, i) => (
-                  <div className="chart-column" key={v.day}>
-                    <div
-                      className={'bar ' + (i === d.daily.length - 1 ? 'last' : '')}
-                      style={{ height: `${Math.max(4, (v.count / max) * 100)}%` }}
-                    >
-                      <span>{v.count}</span>
-                    </div>
-                    <small>
-                      {new Intl.DateTimeFormat('en-GB', {
-                        day: '2-digit',
-                        month: '2-digit',
-                      }).format(new Date(v.day + 'T12:00:00'))}
-                    </small>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <Empty
-              icon={Activity}
-              title="No activity yet"
-              text="Your first contact attempts will appear here."
-            />
-          )}
-          <div className="activity-caption">
-            <Clock3 size={14} />
-            Track deliveries and responses separately to measure reach.
-          </div>
-        </section>
+        <OutreachActivity activity={d.outreach} />
         <section className="response-card">
           <div className="section-title">
             <div>
@@ -1254,9 +1218,10 @@ function Overview({
           <div className="section-title">
             <div>
               <h2>
-                Needs your attention <span className="count-pill amber">{open.length}</span>
+                Agent task queue{' '}
+                <span className="count-pill amber">{agentTasks?.total ?? '–'}</span>
               </h2>
-              <p>A person makes the difference.</p>
+              <p>Owned by agents and durable workers.</p>
             </div>
             <ListTodo size={20} />
           </div>
@@ -1269,17 +1234,29 @@ function Overview({
                   </span>
                   <span>
                     <strong>{t.name || t.reference}</strong>
-                    <small>{displayLabel(t.reason)}</small>
+                    <small>
+                      {t.owner} · {displayLabel(t.status)} · {displayLabel(t.title)}
+                    </small>
                   </span>
                   <ArrowUpRight size={16} />
                 </button>
               ))}
             </div>
           ) : (
-            <Empty icon={CheckCircle2} title="All caught up" text="No open follow-ups." />
+            <Empty
+              icon={CheckCircle2}
+              title={
+                taskError
+                  ? 'Task queue unavailable'
+                  : agentTasks
+                    ? 'All caught up'
+                    : 'Loading tasks…'
+              }
+              text={taskError || 'No active agent tasks.'}
+            />
           )}
           <button className="card-link" onClick={() => navigate('tasks')}>
-            Open follow-up queue
+            Open agent task queue
             <ArrowRight size={16} />
           </button>
         </section>
@@ -1317,7 +1294,7 @@ function Stat({ label, value, icon: Icon, detail, accent, onClick }) {
       <div>
         {detail}
         {onClick && (
-          <button onClick={onClick} aria-label="Open follow-ups">
+          <button onClick={onClick} aria-label="Open agent tasks">
             <ArrowUpRight size={17} />
           </button>
         )}
@@ -2012,7 +1989,7 @@ function CaseModal({ id, onClose, onChanged, initialTab = 'history' }) {
                 ['attempts', `Contacts (${c.attempts.length})`],
                 ['outcome', 'Record outcome'],
                 ['review', 'Case review'],
-                ['payments', `Payment follow-ups (${c.paymentFollowups?.length || 0})`],
+                ['payments', 'Payments'],
                 ['conversations', 'Conversations'],
                 ['documents', 'Documents'],
               ].map(([key, label]) => (
@@ -2162,14 +2139,23 @@ function CaseModal({ id, onClose, onChanged, initialTab = 'history' }) {
             {tab === 'conversations' && <AgentConversations caseId={id} />}
             {tab === 'documents' && <CaseDocuments caseId={id} onChanged={load} />}
             {tab === 'payments' && (
-              <PaymentFollowups
-                agreements={c.paymentAgreements || []}
-                jobs={c.paymentFollowups || []}
-                onSaved={async () => {
-                  await load();
-                  onChanged();
-                }}
-              />
+              <>
+                <CasePayments
+                  caseId={id}
+                  onChanged={async () => {
+                    await load();
+                    onChanged();
+                  }}
+                />
+                <PaymentFollowups
+                  agreements={c.paymentAgreements || []}
+                  jobs={c.paymentFollowups || []}
+                  onSaved={async () => {
+                    await load();
+                    onChanged();
+                  }}
+                />
+              </>
             )}
             {tab === 'review' && (
               <>
@@ -2183,7 +2169,7 @@ function CaseModal({ id, onClose, onChanged, initialTab = 'history' }) {
                           {t.assignee || 'Unassigned'} · {date(t.due_at, true)}
                         </p>
                       </div>
-                      <Badge value={t.status} />
+                      <Badge value={t.bucket === 'scheduled' ? 'scheduled' : t.status} />
                     </div>
                   ))
                 ) : (
@@ -2241,73 +2227,157 @@ function CaseModal({ id, onClose, onChanged, initialTab = 'history' }) {
   );
 }
 
-function Tasks({ tasks, onTask, onCase }) {
-  const [filter, setFilter] = useState('open');
-  const rows = tasks.filter((t) => filter === 'all' || t.status === filter);
+function Tasks({ tasks, onTask, onCase, onConversation }) {
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [filter, setFilter] = useState('ready');
+  const [offset, setOffset] = useState(0);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    const load = () =>
+      api(`/agent-tasks?state=${filter}&offset=${offset}`)
+        .then((value) => {
+          if (active) {
+            setResult(value);
+            setError('');
+          }
+        })
+        .catch((e) => {
+          if (active) setError(e.message);
+        });
+    setResult(null);
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [filter, offset]);
   return (
     <>
-      <div className="section-toolbar">
+      <div className="section-toolbar task-queue-toolbar">
         <div className="segmented">
           {[
-            ['open', 'Open'],
-            ['done', 'Completed'],
+            ['ready', 'Ready now'],
+            ['scheduled', 'Scheduled'],
+            ['waiting', 'Waiting'],
+            ['completed', 'Closed'],
             ['all', 'All'],
-          ].map(([k, v]) => (
-            <button className={filter === k ? 'active' : ''} key={k} onClick={() => setFilter(k)}>
-              {v}
-              <span>{tasks.filter((t) => k === 'all' || t.status === k).length}</span>
+          ].map(([key, label]) => (
+            <button
+              className={filter === key ? 'active' : ''}
+              key={key}
+              onClick={() => {
+                setFilter(key);
+                setOffset(0);
+              }}
+            >
+              {label}
+              <span>{result?.counts[key] ?? '–'}</span>
             </button>
           ))}
         </div>
-        <span className="muted small-text">High priority first</span>
+        <span className="muted small-text">Live worker state · refreshes every 5 seconds</span>
       </div>
+      <p className="muted">
+        Ready now shows due or running work. Scheduled holds future reminders; Waiting shows
+        dependencies and blocked tasks.
+      </p>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
       <section className="card">
-        {rows.length ? (
+        {!result ? (
+          <p className="muted">Loading agent tasks…</p>
+        ) : result.rows.length ? (
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>Person / portfolio</th>
-                  <th>Reason</th>
-                  <th>Priority</th>
-                  <th>Due by</th>
-                  <th>Assignee</th>
+                  <th>Case / portfolio</th>
+                  <th>Task / next action</th>
+                  <th>Owner</th>
+                  <th>Channel</th>
                   <th>Status</th>
+                  <th>Due / created</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {rows.map((t) => (
+                {result.rows.map((t) => (
                   <tr key={t.id}>
                     <td>
                       <button className="text-button" onClick={() => onCase(t.case_id)}>
                         {t.name || t.reference}
                         <ArrowUpRight size={13} />
                       </button>
-                      <small className="block">{displayLabel(t.portfolio_name)}</small>
+                      <small className="block">{t.portfolio_name}</small>
                     </td>
-                    <td>{displayLabel(t.reason)}</td>
-                    <td>
-                      <Badge value={t.priority === 'high' ? 'high' : 'normal'}>
-                        {t.priority === 'high' ? 'High' : 'Normal'}
-                      </Badge>
-                    </td>
-                    <td
-                      className={
-                        t.status === 'open' && new Date(t.due_at) < new Date() ? 'overdue' : ''
-                      }
-                    >
-                      {date(t.due_at, true)}
-                    </td>
-                    <td className="muted">{t.assignee || 'Unassigned'}</td>
-                    <td>
-                      <Badge value={t.status} />
+                    <td style={{ minWidth: 230, maxWidth: 420 }}>
+                      <strong>{displayLabel(t.title)}</strong>
+                      <small className="block">{t.next_action}</small>
+                      {t.error && <small className="block overdue">{t.error}</small>}
                     </td>
                     <td>
-                      <button className="secondary" onClick={() => onTask(t)}>
-                        Manage
-                        <ArrowUpRight size={14} />
-                      </button>
+                      {t.owner}
+                      <small className="block">
+                        {t.source === 'document_ticket'
+                          ? 'Document workflow'
+                          : t.source === 'document_ingestion'
+                            ? 'Deterministic retrieval worker'
+                            : t.source === 'email_delivery'
+                              ? 'Transport worker'
+                              : 'AI agent'}
+                      </small>
+                    </td>
+                    <td>
+                      {t.channel === 'virtual_sms'
+                        ? 'SMS · simulated'
+                        : t.channel === 'email'
+                          ? 'Email'
+                          : 'Internal'}
+                    </td>
+                    <td>
+                      <Badge value={t.bucket === 'scheduled' ? 'scheduled' : t.status} />
+                    </td>
+                    <td>
+                      {t.due_at?.length === 10
+                        ? new Date(t.due_at + 'T12:00:00Z').toLocaleDateString('en-GB', {
+                            timeZone: 'UTC',
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : date(t.due_at || t.created_at, true)}
+                      <small className="block">
+                        {t.source === 'document_ticket'
+                          ? 'Fulfillment deadline'
+                          : t.due_at
+                            ? 'Scheduled'
+                            : 'Created / updated'}
+                      </small>
+                    </td>
+                    <td>
+                      {t.source === 'document_ticket' && (
+                        <button
+                          className="secondary"
+                          onClick={() => setSelectedTicket(t.id.slice(7))}
+                        >
+                          View ticket
+                        </button>
+                      )}
+                      {t.conversation_id && (
+                        <button
+                          className="secondary"
+                          onClick={() => onConversation(t.conversation_id)}
+                        >
+                          Conversation
+                          <ArrowUpRight size={14} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -2317,14 +2387,98 @@ function Tasks({ tasks, onTask, onCase }) {
         ) : (
           <Empty
             icon={CheckCircle2}
-            title={filter === 'open' ? 'All caught up!' : 'No follow-ups in this view'}
-            text="Responses that need your team appear in this queue."
+            title="No agent tasks in this view"
+            text={
+              filter === 'ready'
+                ? 'Nothing needs to run now. Future reminders are in Scheduled; dependencies are in Waiting.'
+                : filter === 'scheduled'
+                  ? 'No future tasks are scheduled.'
+                  : filter === 'waiting'
+                    ? 'No tasks are waiting on a dependency.'
+                    : 'No closed tasks in this view.'
+            }
           />
         )}
+        {result && result.total > result.limit && (
+          <div className="pagination">
+            <span>
+              {offset + 1}–{Math.min(offset + result.limit, result.total)} of {number(result.total)}
+            </span>
+            <div>
+              <button
+                className="secondary"
+                disabled={!offset}
+                onClick={() => setOffset(Math.max(0, offset - result.limit))}
+              >
+                Previous
+              </button>
+              <button
+                className="secondary"
+                disabled={offset + result.limit >= result.total}
+                onClick={() => setOffset(offset + result.limit)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </section>
+      {selectedTicket && (
+        <Modal
+          title="Document fulfillment"
+          subtitle="One request, from retrieval to submission."
+          onClose={() => setSelectedTicket(null)}
+        >
+          <DocumentTicket ticketId={selectedTicket} />
+        </Modal>
+      )}
+      {tasks.length > 0 && (
+        <details className="card" style={{ marginTop: 24, padding: 24 }}>
+          <summary>
+            Legacy follow-ups · {tasks.filter((t) => t.status === 'open').length} open
+          </summary>
+          <p className="muted">
+            These records have no agent executor attached yet. They are kept separate until their
+            triggers and actions are migrated into agent workflows.
+          </p>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Case</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((t) => (
+                  <tr key={t.id}>
+                    <td>
+                      <button className="text-button" onClick={() => onCase(t.case_id)}>
+                        {t.name || t.reference}
+                      </button>
+                    </td>
+                    <td>{displayLabel(t.reason)}</td>
+                    <td>
+                      <Badge value={t.bucket === 'scheduled' ? 'scheduled' : t.status} />
+                    </td>
+                    <td>
+                      <button className="secondary" onClick={() => onTask(t)}>
+                        View record
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
     </>
   );
 }
+
 function TaskModal({ task: t, onClose, onDone }) {
   const [form, setForm] = useState({
       status: t.status,

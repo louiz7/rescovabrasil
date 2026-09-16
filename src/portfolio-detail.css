@@ -45,7 +45,7 @@
   color: #67756e;
 }
 .portfolio-money-metrics {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .portfolio-money-metrics strong {
   font-size: 20px;

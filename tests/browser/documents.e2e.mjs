@@ -104,7 +104,7 @@ test('case library uploads and downloads a document and shows the virtual SMS at
   await dialog.getByLabel('Document title').fill('Original loan agreement');
   await dialog.getByLabel('Document type').selectOption('loan_agreement');
   await dialog
-    .getByLabel('Plain text file')
+    .getByLabel('Text up to 100 KB or PDF up to 10 MB')
     .setInputFiles({ name: 'agreement.txt', mimeType: 'text/plain', buffer: Buffer.from(content) });
   await dialog.getByRole('button', { name: 'Upload document', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('Demo document uploaded');

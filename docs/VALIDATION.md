@@ -131,3 +131,57 @@ No real phone call, SMS, email or payment was initiated. Helena uses determinist
 Marina now delegates uncertainty through a persisted Rafael job. Rafael reloads case evidence and can guide a Marina response, request document retrieval or retain an explicit waiting dependency. New enabled demo workflows do not create default human-review tasks. Payment reports remain unverified and collection restrictions are preserved. Historical review records are not silently rewritten. Escalation history retains original reasons, status, next steps and direct case/conversation links, including resolved work. Duplicate source events and repeated missing-document requests are bounded.
 
 Validation: all 136 Node tests, 17 browser tests and the production build passed. A real configured OpenAI smoke test on synthetic in-memory data exercised Rafael guidance followed by Marina presenting authorized installment options. No real call, SMS, email or payment was sent. Browser regressions verify waiting-state replies/rechecks, escalation navigation and filters, independent desktop card stacks, mobile ordering, keyboard expansion and no horizontal overflow. Desktop and mobile screenshots were inspected. Agent cards no longer leave empty grid rows when their heights differ or details expand.
+
+
+## Google Workspace email and written payment acceptance — 2026-09-16
+
+Implemented a fixed-recipient Gmail transport, local OAuth setup helper, persistent per-conversation email bindings/outbox, thread-scoped reply polling and an English Email test UI. Existing agent roles and provider-neutral model adapters are reused. Written acceptance records an authorized previously presented offer through shared agreement persistence; application code renders the exact dated terms and requires submitted email evidence before email acceptance.
+
+All 164 Node tests and 20 browser tests passed, as did the production build and diff whitespace check. After the final pause handling adjustment, all eight email-workflow regressions passed again. Mocked Gmail tests cover MIME/attachments, account verification, fixed addresses, thread headers, duplicate/own/automatic message filtering, source document isolation, uncertain-send restart behavior, pause-before-send, long-reply isolation, STOP and the full reply → offer → consent → saved agreement → payment-details email path. Existing voice, document, supervisor and portfolio regressions remain passing. An authenticated local HTTP smoke verified the new endpoint and missing-configuration status; unauthenticated access returns 401.
+
+No real email, phone call or payment was sent. Google OAuth consent and an actual Gmail round trip remain unverified until the user creates/authorizes a Google Cloud OAuth client. EMAIL_TEST_ENABLED is false by default, including the prepared local env. Gmail API acceptance is represented as submitted, never proof of delivery/read. Incoming attachments/HTML-only mail, arbitrary recipients, operator-uploaded document release, bounce reconciliation and uncertain-send reconciliation remain out of scope. Setup and complete manual testing are documented in EMAIL_TEST.md; workflow diagrams are updated in WORKFLOWS.md.
+
+
+## Agent-requested channels and cross-channel case continuity — 2026-09-16
+
+Removed manual email activation from the required document-request workflow. Browser/OpenAI, Grok and Twilio share a document tool with email/SMS channel selection. An email request persists its delivery binding immediately, waits for observed call end, and is sent automatically when Google configuration is available. Missing configuration is durable awaiting_configuration. Written document requests can also select email. Per-message channels and per-job routing snapshots preserve one case conversation across SMS/email; a new inbound channel cannot redirect already queued work. Payment acceptance checks the channel and submission evidence of the original offer, not merely the latest inbound channel.
+
+Validation: all 174 Node tests, 22 browser tests and the production build passed. The HTTP voice integration exercises spoken email request → no send before call end → one automatic email with exact attachment, without preview/start calls. Cross-channel regressions exercise email offer → demo SMS acceptance → one persisted agreement and SMS confirmation, missing-configuration recovery without manual per-case activation, duplicate routing stability, unsent-offer rejection and queued-channel isolation. Browser tests verify shared history, a usable demo SMS composer after email and automatic email dependency states. No real Gmail or phone messages were sent; Google OAuth remains required and SMS remains the virtual case inbox.
+
+
+## Creditor context repair — 2026-09-16
+
+Marina previously received only case name, reference and language; the portfolio creditor was omitted. Shared context now includes an allowlisted case summary and linked portfolio facts for Marina/Rafael, with source guidance and snapshot invalidation on changes. Regression coverage reproduces document email → SMS creditor question, verifies Banco Horizonte (fictional) and recorded amount/currency, preserves missing due dates as null and verifies refreshed creditor data. All 175 Node tests passed. No customer message was resent or fabricated to correct historical conversation output.
+
+
+The shared knowledge extension adds case-scoped events, notes, tasks, contact attempts, payment follow-ups, document requests, delivery records and indexed excerpts to each Marina/Rafael invocation. A separate regression verifies fresh task notes, document presence and cross-case isolation. All 176 Node tests pass after this extension. Full call transcripts remain outside this context and long documents are explicitly marked as excerpts; no claim of complete transcript/document ingestion is made.
+
+
+## On-demand case lookup — 2026-09-16
+
+Replaced the broad case-knowledge prompt injection with a provider-neutral lookup action. Model input omits portfolio/detail facts and document bodies, includes the last 24 messages, and can request case details, notes/activity, documents/pages, payment terms, delivery and earlier history. The coordinator scopes queries to the current case, bounds repeated lookups and traces additional model calls. All 183 Node tests pass, including the creditor lookup integration, provider schema validation, document pagination beyond the first 6,000 characters, cross-case rejection and bounded lookup loops. Existing document tests now verify that attachment delivery does not require injecting full text into the model. No vector search or knowledge graph was installed, and no customer message was automatically resent.
+
+
+## PostgreSQL, durable workers and Helena retrieval — 16 September 2026
+
+- Full Node suite with `TEST_DATABASE_URL`: **202 passed, zero failures or skips**. Covers real PostgreSQL API/import/dashboard, cross-channel agreement acceptance, migration reconciliation, concurrent leases/fencing, worker startup/shutdown, ranked document retrieval, PDF extraction and installed OCR.
+- Browser suite: **22 passed**. Production build passed; `git diff --check` clean.
+- Isolated PostgreSQL workload: 200 cases, four worker processes, peak 16 simultaneous model stubs, 200 outputs, zero duplicate case generations. Elapsed 2,058 ms using a deterministic 100 ms mock; this is coordination validation, not real provider capacity.
+- Migrated the local SQLite snapshot to `rescova_app`: 21 cases and 221 total persisted rows, verified during atomic migration. Original database and `data/backups/pre-postgres-20260916.sqlite` retained. Local authenticated dashboard, portfolios, agents and worker health endpoints return HTTP 200; health reports PostgreSQL and one embedded worker.
+- Installed Poppler/Tesseract with English and Portuguese data. Local OCR configured `eng+por`. Document originals and database require coordinated backups; see OPERATIONS.md and RETRIEVAL.md.
+- Verification used mocked communications; no synthetic live messages or calls were initiated. Existing authorized Gmail configuration remains enabled for normal app use.
+- Remaining boundaries: one API process, synchronous SQL compatibility adapter, shared local document storage, no global provider quota service, no semantic embeddings/knowledge graph, no claimed production throughput for hundreds of live calls.
+
+
+## Outreach projection and agent task list — 16 September 2026
+
+208 Node tests passed with PostgreSQL enabled; 23 browser tests in the full run plus one new focused channel/mobile test passed. Production build, formatting checks on changed implementation files and diff check passed. Inspected real local PostgreSQL dashboard/task endpoints (HTTP 200) and rendered both views. No synthetic provider calls/messages initiated.
+
+Regression checks cover zero-day calendar buckets, provider-ID deduplication, real versus simulated transport, queued/cancelled exclusions, Gmail submission evidence, virtual SMS delivery classification, actual task ownership, unresolved supervisor state, pagination, legacy task separation and mobile channel filtering. Outreach is a current-record projection: email buckets use latest send-state update; historical event times are not reconstructed. Browser sessions without debug records are not counted. See ASSESSMENT.md for current readiness and AGENTIC_ROADMAP.md for planned canonical task and payment infrastructure.
+
+
+## Durable document tickets — 16 September 2026
+
+222 Node tests passed with TEST_DATABASE_URL enabled; 25 browser tests passed; production build and changed-file formatting/diff checks passed. New tests cover request deduplication, fixed source channel, source-end wait, workflow recreation/restart, pinned document version, exact Gmail attachment/submission receipt, later document availability, no model calls while waiting, contact stop during drafting, three-attempt failure, seven-day expiry and uncertain send without resend. Existing explicit manual email activation of a completed virtual SMS remains compatible.
+
+Local PostgreSQL API startup and endpoint access checked: unauthenticated ticket lookup 401, authenticated Agent tasks 200, unknown ticket 404. New tests used mocked providers and isolated databases; actual browser/Gmail happy path remains user-operated using DOCUMENT_TICKET_TEST.md. No historical tickets are backfilled and no old communication is replayed.

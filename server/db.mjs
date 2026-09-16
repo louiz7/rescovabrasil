@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { PostgresDatabase } from './postgres.mjs';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -6,8 +7,10 @@ import { randomUUID } from 'node:crypto';
 export const id = () => randomUUID();
 export const now = () => new Date().toISOString();
 export function openDb(path = ':memory:') {
-  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const db = new DatabaseSync(path);
+  const postgres = /^postgres(?:ql)?:\/\//.test(path);
+  if (!postgres && path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const db = postgres ? new PostgresDatabase(path) : new DatabaseSync(path);
+  db.dialect = postgres ? 'postgres' : 'sqlite';
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS portfolios (
       id TEXT PRIMARY KEY, name TEXT NOT NULL, creditor TEXT NOT NULL, timezone TEXT NOT NULL,
@@ -76,17 +79,25 @@ export const all = (db, sql, ...args) => db.prepare(sql).all(...args);
 export const one = (db, sql, ...args) => db.prepare(sql).get(...args);
 export const run = (db, sql, ...args) => db.prepare(sql).run(...args);
 let transactionSequence = 0;
+const transactionDepth = new WeakMap();
 export function transaction(db, fn) {
   const point = 'rescova_tx_' + ++transactionSequence;
-  db.exec('SAVEPOINT ' + point);
+  const depth = transactionDepth.get(db) || 0;
+  const outer = db.dialect === 'postgres' && depth === 0;
+  db.exec(outer ? 'BEGIN' : 'SAVEPOINT ' + point);
+  transactionDepth.set(db, depth + 1);
   try {
     const result = fn();
-    db.exec('RELEASE SAVEPOINT ' + point);
+    if (result && typeof result.then === 'function')
+      throw new Error('Database transactions must be synchronous');
+    db.exec(outer ? 'COMMIT' : 'RELEASE SAVEPOINT ' + point);
     return result;
   } catch (error) {
-    db.exec('ROLLBACK TO SAVEPOINT ' + point);
-    db.exec('RELEASE SAVEPOINT ' + point);
+    db.exec(outer ? 'ROLLBACK' : 'ROLLBACK TO SAVEPOINT ' + point);
+    if (!outer) db.exec('RELEASE SAVEPOINT ' + point);
     throw error;
+  } finally {
+    transactionDepth.set(db, depth);
   }
 }
 export function event(db, caseId, kind, detail, actor = 'operator', attemptId = null) {

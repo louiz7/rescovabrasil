@@ -141,14 +141,14 @@ Automatisierte Tests müssen relevante Risiken abdecken: defekte und wiederholte
 Auf ausdrücklichen Hinweis des Auftraggebers verwendet der Browser-Sprachtest jetzt GPT-Live (`gpt-live-1`) für die Gesprächsführung und einen getrennten Responses-Backend-Agenten (`gpt-5.6-terra`) für Namensbestätigung und Ergebniserfassung. Testsprache ist vorläufig Englisch. Die bislang getrennte Twilio-Telefonie bleibt GPT Realtime/pt-BR und deaktiviert. Es werden ausschließlich der feste fiktive Testfall und eine flüchtige isolierte Datenbank verwendet. GPT-Live steuert Sprache und Unterbrechungen; die App führt autorisierte Fachfunktionen aus und verwaltet Sitzung und Ergebnisse. Grundlage: https://developers.openai.com/api/docs/guides/live und die verlinkten WebRTC-/Delegations-/Migrationsleitfäden.
 
 
-### Separate Grok voice comparison sandbox
+### Voice provider selection — updated 16 September 2026
 
-Add an independent browser microphone test for xAI Grok alongside GPT-Live and Twilio. Keep operator UI and conversations in English with the same fictional Ana Silva case and shared isolated tools. Browser sessions must never send telephone calls or modify imported portfolios. Stream PCM audio over an authenticated app WebSocket; keep the permanent xAI key server-side. Preserve explicit name self-report once per session, allow hypothetical conversation scenarios, and record actual expressed outcomes only. Support audio interruption, mute, end, startup errors, and a five-minute session limit. Configure XAI_API_KEY locally, with optional XAI_VOICE_MODEL and XAI_VOICE defaults. Verify lifecycle, authorization, tool continuation and UI using simulated providers before any live xAI test.
+The Grok comparison sandbox has been retired. Keep Clara as the GPT Live voice agent, Lucas for delegated case tools, and both browser and Twilio testing. Remove Sofia from the active team; retain historical test records.
 
 
 ### Integrate accepted demo solutions with the platform
 
-Accepted voice-demo payment solutions must persist in the demo workspace as a case in a dedicated portfolio, with the accepted schedule, an operational review task and a payment follow-up job. OpenAI, Grok and Twilio share this behavior. Session/agreement identity prevents duplicate records. Follow-ups initially support SMS/email with clearly nonpayable demo links and Pix placeholders; operators can edit drafts in the case detail. No real sending is included in this iteration. Later stop-contact/dispute/review outcomes must update the saved case and cancel drafts. Browser speech remains ephemeral and existing imported cases stay separate.
+Accepted voice-demo payment solutions must persist in the demo workspace as a case in a dedicated portfolio, with the accepted schedule, an operational review task and a payment follow-up job. GPT Live browser and Twilio tests share this behavior; historical Grok results remain readable. Session/agreement identity prevents duplicate records. Follow-ups initially support SMS/email with clearly nonpayable demo links and Pix placeholders; operators can edit drafts in the case detail. No real sending is included in this iteration. Later stop-contact/dispute/review outcomes must update the saved case and cancel drafts. Browser speech remains ephemeral and existing imported cases stay separate.
 
 
 ## Model-independent agent execution and first automated handoff
@@ -163,3 +163,57 @@ The first implemented handoff is an accepted demo payment solution → observed 
 The next implemented slice is voice document request → case-scoped Helena retrieval → Marina virtual SMS fulfillment → continued written conversation. A document request does not require accepting a payment agreement. Cases expose immutable uploaded text documents and retrieval status; new Ana demo sources include explicitly fictional artifacts. Helena starts as a deterministic retrieval specialist, with a storage interface that can evolve to external connectors and semantic retrieval. This does not yet authorize real external document delivery or implement PDF/OCR processing.
 
 [WORKFLOWS.md](WORKFLOWS.md) is the maintained workflow map. Update its Mermaid diagrams whenever an implementation change affects task triggers, ownership, delivery, or lifecycle. Diagrams distinguish current execution from planned continuous portfolio autonomy.
+
+
+## Google Workspace email and written acceptance — 16 September 2026
+
+The demo now supports an explicitly activated real email transport using the existing Google Workspace mailbox `louiz@rescova.de` as both sender and sole test recipient. Marina owns written conversations across virtual SMS and email; the persistent coordinator and delivery adapter handle transport without adding a separate email reasoning agent. Gmail OAuth setup is required before sending; no SendGrid account or DNS changes are needed for this pilot. Mailbox polling reads only registered test threads. Real delivery is gated separately from virtual generation, and uncertain sends are never blindly retried.
+
+Written conversations can now accept a previously explained authorized offer through the shared payment agreement persistence. Application-rendered exact terms, latest-message consent, offer expiry, existing agreement authority and email-submission evidence are checked before saving. Helena can supply seeded fictional documents for email; wider external document release and inbound attachment handling are not part of this slice. See EMAIL_TEST.md and WORKFLOWS.md.
+
+
+### Channel decisions belong to the agents
+
+An explicit caller request such as “send my loan agreement by email” must create and execute the delivery task after call end without an operator selecting Email test or pressing Send. Missing transport configuration is an explicit durable dependency; it resumes when configured. SMS and email are routes into one case context, not separate agent memories. Marina can use an offer presented by email when processing acceptance via SMS, preserving evidence and idempotent agreement storage. Individual messages and queued tasks retain their channel, so concurrent inputs cannot redirect work. The Email test screen is monitoring/troubleshooting, not a mandatory workflow step. The currently implemented SMS route is still virtual; this does not claim real Twilio SMS handling.
+
+
+### Always-current shared case knowledge
+
+Marina must communicate from the case's complete relevant knowledge across channels, not only the last message or attachment. Each turn reloads recorded case/portfolio facts, notes, outcomes, tasks, agreements, delivery evidence and available document knowledge. Missing facts must be distinguished from omitted or unavailable context; conflicting sources need explicit resolution. The shared context service is the basis for all conversational roles. Current limits (document excerpts and transcripts not yet attached automatically) are explicit gaps to close, not intended product constraints.
+
+
+### On-demand context refinement
+
+Always-current knowledge does not mean injecting the complete case into every model request. Conversational agents receive a small working context and invoke case-scoped lookup tools when a question requires more information. Helena owns the evolving document-retrieval capability; structured financial facts remain exact database reads. Retrieval results carry source/version/page metadata and explicit missing/conflict signals. Search/RAG can extend this interface without changing conversation or delivery logic. A knowledge graph is not an immediate requirement. Token usage and lookup latency should be measured, not assumed to improve merely because another agent is added.
+
+
+### Scalable execution and document evidence — 16 September 2026
+
+The implemented foundation now supports PostgreSQL persistence and independent background worker processes. Agents and email delivery share expiring case ownership with fencing, preserving case ordering while independent cases run concurrently. Missing or interrupted model work can resume; uncertain external sends are held without blind retries. One API process is still required for in-memory sessions, voice and the legacy dispatcher. Concurrency controls are per process, not a claim of unlimited provider capacity.
+
+Helena now provides deterministic case-scoped full-text passage retrieval and durable PDF ingestion/OCR, with document version and page provenance. Agents retrieve relevant evidence on demand; authoritative payment records remain structured database facts. Original document storage must be shared by API and workers. Embeddings, a knowledge graph, managed object storage and horizontal API replication remain planned only when justified by operating evidence. The operational boundary and measured mocked-load benchmark are recorded in [OPERATIONS.md](OPERATIONS.md); workflow diagrams remain in [WORKFLOWS.md](WORKFLOWS.md).
+
+
+### Agent work queue, outreach evidence and payment reconciliation — 16 September 2026
+
+Follow-ups should become observable work owned by agents, with a typed task, source event, case, accountable owner, execution state, next action and completion evidence. The UI is an oversight surface, not a required human-review stage. The first view may project existing durable workflows; it must distinguish execution already implemented from historical manual records and unavailable capabilities.
+
+Outreach reporting must reflect persisted communication evidence, separated by channel, direction and real/simulated/browser scope. Gmail submission is not proof of delivery or reading; an ended phone call is not proof of right-party contact. Plans, drafts, attempts, provider confirmations and debtor responses are distinct measures.
+
+The target product will support receiving and reconciling payments. Payment provider adapters and an auditable monetary ledger determine verified payment state. Agents use that state to decide follow-ups; they do not infer receipt from debtor statements or write balances based on generated text. Payment processing expands the original outreach-only MVP as a future milestone; it is not already enabled. Stripe is an example interface, not an approved provider for this business model. Provider eligibility and the specific Rescova entity/merchant-account configuration remain open implementation inputs; the user confirmed collection only of Rescova-owned purchased receivables.
+
+After every substantial change, refresh [ASSESSMENT.md](ASSESSMENT.md), with evidence, current boundaries and the next milestone toward fully agentic collections. The phased implementation proposal is [AGENTIC_ROADMAP.md](AGENTIC_ROADMAP.md).
+
+
+#### Clarification: creditor ownership
+
+Confirmed scope: Rescova collects exclusively receivables it has purchased and owns. The current legal creditor/owner is distinct from the original lender. Incoming payments settle Rescova’s own receivables; third-party servicing and remittance are out of scope. Track acquisition/assignment provenance and keep portfolio purchase price separate from the debtor balance. Do not classify provider eligibility from the generic phrase “debt collection” alone; confirm the actual ownership and funds flow.
+
+
+### First durable parent workflow: document fulfillment
+
+New document requests now have one correlated parent ticket joining Helena retrieval, Marina composition and the existing email/virtual-SMS delivery. Missing documents wait without repeated model generation and resume on evidence availability; immutable versions, source-call completion, fixed channels, bounded generation attempts and a fulfillment deadline define the contract. Email completion requires provider submission evidence for the linked attachment. This first implementation reuses existing workers and delivery records; it is not a separate general orchestration engine. Subsequent payment verification should reuse these explicit ownership, dependency and evidence conventions.
+
+### Provider-independent payment foundation — 16 September 2026
+
+Accepted demo plans now connect to structured installments, durable request intents, versioned simulated payment events, capped allocations and agent-owned notification/reconciliation tasks. Financial mutations are deterministic and evidence-driven; conversational agents retrieve current payment state on demand across text and voice. The simulator implements the replaceable payment-provider contract; real provider activation remains explicitly gated. Simulation is distinct from real recovery. See PAYMENTS.md for current scope, the adapter boundary and end-to-end testing; WORKFLOWS.md records executed versus planned behavior.

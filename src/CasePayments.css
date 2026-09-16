@@ -1,0 +1,226 @@
+.case-payments {
+  display: grid;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.case-payments-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.case-payments-heading > svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.case-payments-heading > div {
+  flex: 1;
+  min-width: 0;
+}
+.case-payments h3,
+.case-payments h4 {
+  margin: 0;
+}
+.case-payments-heading p {
+  margin: 6px 0 0;
+  color: var(--muted, #788575);
+  line-height: 1.5;
+}
+.case-payment-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #f0f4ea;
+  color: #536949;
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: capitalize;
+  overflow-wrap: anywhere;
+}
+.case-payment-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+  background: #f6f7f3;
+  border-radius: 12px;
+}
+.case-payment-summary > div {
+  display: grid;
+  gap: 8px;
+}
+.case-payment-summary small,
+.case-payment-agreement small,
+.case-payment-activity small {
+  display: block;
+  color: #778371;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.case-payment-summary strong {
+  font-size: 22px;
+  overflow-wrap: anywhere;
+}
+.case-payment-empty {
+  padding: 20px;
+  border: 1px dashed #dce2d6;
+  border-radius: 10px;
+  color: #778371;
+  margin: 0;
+  line-height: 1.6;
+}
+.case-payment-agreement {
+  border: 1px solid #e3e7dd;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.case-payment-agreement header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+  background: #fafbf8;
+}
+.case-payment-agreement header small {
+  margin-top: 6px;
+}
+.case-payment-installments {
+  list-style: none;
+  padding: 0 20px;
+  margin: 0;
+}
+.case-payment-installments li {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(150px, 1.4fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid #edf0e9;
+}
+.case-payment-installments small {
+  margin-top: 5px;
+}
+.case-payment-simulator {
+  border: 1px solid #e3e7dd;
+  border-radius: 12px;
+}
+.case-payment-simulator summary {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  padding: 18px 20px;
+  font-weight: 600;
+}
+.case-payment-simulator summary::after {
+  content: '+';
+  margin-left: auto;
+}
+.case-payment-simulator[open] summary::after {
+  content: '−';
+}
+.case-payment-simulator summary:focus-visible {
+  outline: 2px solid #94ad60;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+.case-payment-simulator-content {
+  padding: 0 20px 20px;
+  display: grid;
+  gap: 24px;
+}
+.case-payment-simulator-content > p {
+  margin: 0;
+  line-height: 1.6;
+}
+.case-payment-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.case-payment-form-grid .field,
+.case-payment-clock .field {
+  margin: 0;
+  min-width: 0;
+}
+.case-payment-form-grid select,
+.case-payment-form-grid input,
+.case-payment-clock input {
+  min-width: 0;
+  width: 100%;
+}
+.case-payment-clock {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid #e3e7dd;
+}
+.case-payment-clock .field {
+  flex: 1 1 220px;
+}
+.case-payment-activity {
+  display: grid;
+  gap: 0;
+}
+.case-payment-activity h4 {
+  margin-bottom: 10px;
+}
+.case-payment-activity > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid #edf0e9;
+}
+.case-payment-activity > div > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.case-payment-activity small {
+  margin-top: 5px;
+}
+@media (max-width: 600px) {
+  .case-payment-summary {
+    padding: 16px;
+    gap: 16px;
+    grid-template-columns: 1fr;
+  }
+  .case-payment-summary > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .case-payment-summary strong {
+    font-size: 19px;
+  }
+  .case-payment-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .case-payment-installments li {
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+  .case-payment-installments li > div:nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .case-payment-agreement header,
+  .case-payment-simulator summary {
+    padding: 16px;
+  }
+  .case-payment-installments {
+    padding: 0 16px;
+  }
+  .case-payment-simulator-content {
+    padding: 0 16px 16px;
+  }
+  .case-payment-clock button {
+    width: 100%;
+  }
+}

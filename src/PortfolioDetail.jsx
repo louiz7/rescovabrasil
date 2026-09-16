@@ -199,6 +199,10 @@ export default function PortfolioDetail({
               <span>Agreed amount · promised, not paid</span>
             </div>
             <div>
+              <strong>{money(metrics.simulatedReceivedMinor ?? 0)}</strong>
+              <span>Simulated receipts · no real money collected</span>
+            </div>
+            <div>
               <strong>{money(metrics.recoveredAmountMinor)}</strong>
               <span>Verified recovery · payment data not connected</span>
             </div>

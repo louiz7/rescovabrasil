@@ -1,3 +1,4 @@
+import { registerPaymentAgreement } from './payments.mjs';
 import { id, now, one, all, run, transaction, event, task } from './db.mjs';
 import { assert, dateOnly, email, validateOutcome } from './domain.mjs';
 import { demoPaymentOffers } from './demo-payment.mjs';
@@ -297,6 +298,7 @@ export function persistDemoAgreement(
       created_at: timestamp,
     };
     run(db, 'INSERT INTO demo_voice_results VALUES (?,?,?,?,?,?,?)', ...Object.values(result));
+    registerPaymentAgreement(db, caseId, savedAgreement);
     if (!config.agentWorkflowsEnabled) task(db, caseId, taskReason, timestamp, 'normal');
     const channel = destination ? 'sms' : 'email',
       followupDestination = destination || 'ana.silva@example.invalid',

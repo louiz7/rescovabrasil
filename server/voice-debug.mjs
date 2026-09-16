@@ -412,7 +412,7 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
   router.get('/', listing);
   router.get('/sessions', listing);
   router.post('/sessions', (req, res) => {
-    assert(['openai', 'grok'].includes(req.body?.provider), 'Invalid browser debug provider.');
+    assert(req.body?.provider === 'openai', 'Invalid browser debug provider.');
     res.json(
       create({
         owner: req.sessionToken,

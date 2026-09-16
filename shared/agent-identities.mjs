@@ -5,5 +5,4 @@ export const agentIdentities = Object.freeze({
   supervisor: { name: 'Rafael', role: 'Case supervisor' },
   openai_voice: { name: 'Clara', role: 'Voice outreach' },
   voice_backend: { name: 'Lucas', role: 'Case operations' },
-  grok_voice: { name: 'Sofia', role: 'Voice outreach · Grok test' },
 });

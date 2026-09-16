@@ -1,3 +1,4 @@
+import { outreachActivity } from './outreach-activity.mjs';
 import { id, now, one, all, run, transaction, event, task } from './db.mjs';
 import {
   assert,
@@ -252,6 +253,7 @@ export function dashboard(db, mode) {
   const scalar = (sql) => one(db, sql).n;
   return {
     mode,
+    outreach: outreachActivity(db),
     cases: scalar('SELECT COUNT(*) n FROM cases'),
     portfolios: scalar('SELECT COUNT(*) n FROM portfolios'),
     attempts: scalar('SELECT COUNT(*) n FROM attempts'),
@@ -280,7 +282,7 @@ export function dashboard(db, mode) {
     ),
     daily: all(
       db,
-      'SELECT substr(created_at,1,10) day,COUNT(*) count FROM attempts GROUP BY day ORDER BY day DESC LIMIT 14',
+      'SELECT substr(created_at,1,10) AS "day",COUNT(*) count FROM attempts GROUP BY "day" ORDER BY "day" DESC LIMIT 14',
     ).reverse(),
     events: all(
       db,

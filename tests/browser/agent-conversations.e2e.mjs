@@ -96,14 +96,14 @@ test('agent registry exposes roles and virtual SMS on a narrow screen', async ({
   await page.getByLabel('Workspace password').fill('browser-test-password');
   await page.getByRole('button', { name: 'Sign in to workspace' }).click();
   await page.getByRole('button', { name: 'Agents', exact: true }).click();
-  await expect(page.getByText('Agent roles, configuration and work status')).toBeVisible();
+  await expect(page.getByRole('button', {name:'View Marina',exact:true})).toBeVisible();
   await expect(page.getByText('Loading agents…')).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
   ).toBeTruthy();
-  const launch = page.getByRole('button', { name: 'Demo SMS conversations', exact: true });
+  const launch = page.getByRole('button', { name: 'Conversations', exact: true });
   await expect(launch).toBeVisible();
   await launch.click();
   await expect(

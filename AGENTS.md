@@ -14,3 +14,8 @@ This direction does not require an immediate architecture rewrite, a particular 
 ## Workflow documentation
 
 Maintain [docs/WORKFLOWS.md](docs/WORKFLOWS.md) alongside code changes that alter workflow triggers, agent ownership, task states, or delivery. Keep Mermaid diagrams aligned with the implementation and explicitly label planned behavior.
+
+
+## Product maturity assessment
+
+After each substantial feature, architecture or workflow change, update [docs/ASSESSMENT.md](docs/ASSESSMENT.md). Record what now works, the evidence and limitations, remaining gaps to autonomous collections, the next milestone and any revised effort estimate. Keep demo behavior, provider-backed tests and production readiness separate. Include a short assessment delta in the final response. Do not increase readiness simply because more agents or UI elements exist.

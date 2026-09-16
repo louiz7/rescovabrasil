@@ -1,3 +1,6 @@
+import { getDocumentTicket } from './document-tickets.mjs';
+import { agentTaskList } from './agent-task-list.mjs';
+import { createEmailWorkflows } from './email-workflows.mjs';
 import { createAgentWorkflows } from './agent-workflows.mjs';
 import { createAgentRunner } from './agent-models.mjs';
 import { agentRegistry } from './agent-registry.mjs';
@@ -19,7 +22,6 @@ import {
   getCasePaymentData,
   updatePaymentFollowup,
 } from './demo-platform.mjs';
-import { createGrokVoiceTests } from './grok-voice.mjs';
 import { createTwilioTests } from './twilio-test.mjs';
 import { createBrowserVoiceTests } from './browser-voice.mjs';
 import { randomBytes } from 'node:crypto';
@@ -55,7 +57,7 @@ import { providerStatus, inboundMessage, receiveOnce } from './webhooks.mjs';
 export function createApp(
   db,
   config,
-  { voiceFetch, voiceTestTtlMs, twilioFetch, grokConnect, grokTestTtlMs, agentRun } = {},
+  { voiceFetch, voiceTestTtlMs, twilioFetch, agentRun, emailTransport } = {},
 ) {
   assert(
     config.password.length >= 12 || config.mode === 'demo',
@@ -85,6 +87,23 @@ export function createApp(
     runAgent: agentRun || createAgentRunner(config),
   });
   app.locals.agentWorkflows = agentWorkflows;
+  const emailWorkflows = createEmailWorkflows(db, config, agentWorkflows, {
+    transport: emailTransport,
+  });
+  app.locals.emailWorkflows = emailWorkflows;
+  const paymentStatusFor =
+    (provider) =>
+    ({ sessionId }) => {
+      const source = one(
+        db,
+        'SELECT case_id FROM demo_voice_cases WHERE provider=? AND session_id=?',
+        provider,
+        sessionId,
+      );
+      return source
+        ? agentWorkflows.payments.state(source.case_id)
+        : { agreements: [], payments: [], summary: null };
+    };
   const saveDemoAgreement = (provider) => (details) =>
     config.mode === 'demo'
       ? persistDemoAgreement(
@@ -106,10 +125,16 @@ export function createApp(
     );
     return transaction(db, () => {
       const saved = ensureDemoVoiceCase(db, config, { ...details, provider });
-      return {
-        ...saved,
-        ...agentWorkflows.documentRequested({ ...details, provider, caseId: saved.caseId }),
-      };
+      const requested = agentWorkflows.documentRequested({
+        ...details,
+        provider,
+        caseId: saved.caseId,
+      });
+      const delivery =
+        details.deliveryChannel === 'email'
+          ? emailWorkflows.requestDelivery(requested.conversationId)
+          : { channel: 'sms', status: 'queued', transport: 'virtual' };
+      return { ...saved, ...requested, delivery };
     });
   };
   const saveDemoOutcome = (provider) => (details) => {
@@ -132,6 +157,7 @@ export function createApp(
   const twilioTests = createTwilioTests(db, config, {
     fetchImpl: twilioFetch,
     onAgreement: saveDemoAgreement('twilio'),
+    onPaymentStatus: paymentStatusFor('twilio'),
     onDocument: saveDemoDocument('twilio'),
     onOutcome: saveDemoOutcome('twilio'),
     onEnded: sourceEnded('twilio'),
@@ -357,6 +383,7 @@ export function createApp(
     fetchImpl: voiceFetch,
     ttlMs: voiceTestTtlMs,
     onAgreement: saveDemoAgreement('openai'),
+    onPaymentStatus: paymentStatusFor('openai'),
     onDocument: saveDemoDocument('openai'),
     onOutcome: saveDemoOutcome('openai'),
     onEnded: sourceEnded('openai'),
@@ -366,24 +393,31 @@ export function createApp(
   app.use('/api/voice-debug', voiceDebug.router);
   app.use('/api/cases/:caseId/documents', agentWorkflows.library.router);
   app.use('/api/agent-workflows', agentWorkflows.router);
+  app.use('/api/email-test', emailWorkflows.router);
   app.get('/api/agents', (_req, res) => res.json(agentRegistry(config, agentWorkflows)));
-  const grokTests = createGrokVoiceTests(config, {
-    connect: grokConnect,
-    ttlMs: grokTestTtlMs,
-    onAgreement: saveDemoAgreement('grok'),
-    onDocument: saveDemoDocument('grok'),
-    onOutcome: saveDemoOutcome('grok'),
-    onEnded: sourceEnded('grok'),
+  app.get('/api/workers', (_req, res) => {
+    const hasHealth = one(
+      db,
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_runtime_health'",
+    );
+    res.json({
+      database: db.dialect || 'sqlite',
+      embeddedWorkers: config.appWorkersEnabled,
+      agents: agentWorkflows.workerStats?.() || {},
+      email: emailWorkflows.workerStats?.() || {},
+      workers: hasHealth
+        ? all(
+            db,
+            'SELECT id,kind,started_at AS startedAt,heartbeat_at AS heartbeatAt,status FROM worker_runtime_health WHERE heartbeat_at>? ORDER BY heartbeat_at DESC',
+            new Date(Date.now() - 60000).toISOString(),
+          )
+        : [],
+    });
   });
-  app.locals.grokTests = grokTests;
-  app.use('/api/grok-voice-test', grokTests.router);
   app.use('/api/twilio-test', twilioTests.router);
   app.post('/api/logout', async (req, res) => {
     sessions.delete(req.sessionToken);
-    await Promise.all([
-      voiceTests.closeOwner(req.sessionToken),
-      grokTests.closeOwner(req.sessionToken),
-    ]);
+    await voiceTests.closeOwner(req.sessionToken);
     res.clearCookie('rescova_session', { path: '/' }).json({ ok: true });
   });
   app.get('/api/dashboard', (_req, res) => res.json(dashboard(db, config.mode)));
@@ -457,6 +491,32 @@ export function createApp(
       .attachment('rescova-cases.csv')
       .type('text/csv')
       .send('\uFEFF' + lines.join('\r\n'));
+  });
+  app.get('/api/cases/:id/payments', (req, res) => {
+    assert(one(db, 'SELECT id FROM cases WHERE id=?', req.params.id), 'Case not found.', 404);
+    res.json(agentWorkflows.payments.state(req.params.id));
+  });
+  app.post('/api/cases/:id/payments/simulate', (req, res) => {
+    assert(
+      config.mode === 'demo' && config.agentWorkflowsEnabled !== false,
+      'Payment simulation is disabled.',
+      403,
+    );
+    res.json(agentWorkflows.payments.simulate(req.params.id, req.body));
+  });
+  app.post('/api/cases/:id/payments/tick', async (req, res, next) => {
+    try {
+      assert(
+        config.mode === 'demo' && config.agentWorkflowsEnabled !== false,
+        'Payment simulation is disabled.',
+        403,
+      );
+      assert(one(db, 'SELECT id FROM cases WHERE id=?', req.params.id), 'Case not found.', 404);
+      await agentWorkflows.payments.tick({ caseId: req.params.id, date: req.body.date });
+      res.json(agentWorkflows.payments.state(req.params.id));
+    } catch (error) {
+      next(error);
+    }
   });
   app.get('/api/cases/:id', (req, res) => {
     const c = one(
@@ -599,6 +659,12 @@ export function createApp(
   app.patch('/api/payment-followups/:id', (req, res) =>
     res.json(updatePaymentFollowup(db, config, req.params.id, req.body)),
   );
+  app.get('/api/document-tickets/:id', (req, res) => {
+    const ticket = getDocumentTicket(db, req.params.id);
+    assert(ticket, 'Document ticket not found.', 404);
+    res.json(ticket);
+  });
+  app.get('/api/agent-tasks', (req, res) => res.json(agentTaskList(db, req.query)));
   app.get('/api/tasks', (_req, res) =>
     res.json(
       all(

@@ -73,6 +73,14 @@ export function portfolioSummary(db, portfolioId, mode) {
       .filter((a) => a.currency === 'BRL')
       .reduce((sum, a) => sum + a.totalMinor, 0),
     recoveredAmountMinor: null,
+    simulatedReceivedMinor: one(
+      db,
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='collected_payments'",
+    )
+      ? scalar(
+          "SELECT COALESCE(SUM(CASE WHEN p.status IN ('succeeded','refunded') THEN p.amount_minor-p.refunded_minor ELSE 0 END),0) n FROM collected_payments p JOIN cases c ON c.id=p.case_id WHERE c.portfolio_id=? AND p.mode='simulation' AND p.currency='BRL'",
+        )
+      : 0,
     coveragePercent: cases ? Math.round((attemptedCases / cases) * 100) : 0,
   };
   return {
@@ -101,7 +109,7 @@ export function portfolioDetail(db, portfolioId, mode) {
     ),
     daily: all(
       db,
-      'SELECT substr(a.created_at,1,10) day,COUNT(*) count FROM attempts a JOIN cases c ON c.id=a.case_id WHERE c.portfolio_id=? GROUP BY day ORDER BY day DESC LIMIT 14',
+      'SELECT substr(a.created_at,1,10) AS "day",COUNT(*) count FROM attempts a JOIN cases c ON c.id=a.case_id WHERE c.portfolio_id=? GROUP BY "day" ORDER BY "day" DESC LIMIT 14',
       portfolioId,
     ).reverse(),
     outcomes: all(

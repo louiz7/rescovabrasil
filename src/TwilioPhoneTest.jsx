@@ -277,7 +277,13 @@ export default function TwilioPhoneTest({ onCase, onDebug }) {
           <p>
             {call.platform.reference || 'Demo case'} · Helena will retrieve the requested document.
           </p>
-          <p>After the call ends, open Demo SMS conversations to see the simulated follow-up.</p>
+          <p>
+            {call.platform.delivery?.status === 'awaiting_configuration'
+              ? 'Email requested. Delivery is waiting for email configuration.'
+              : call.platform.delivery?.channel === 'email'
+                ? 'Email follow-up is queued for after the call ends. Track delivery in the case conversation.'
+                : 'After the call ends, open Demo SMS conversations to see the simulated follow-up.'}
+          </p>
           {onCase && (
             <button
               type="button"
