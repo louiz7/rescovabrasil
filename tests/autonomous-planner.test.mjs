@@ -54,6 +54,22 @@ test('mock autonomous run plans safe work, executes specialists and never contac
     6,
   );
   assert.equal(result.latestRun.summary.providerContacts, 0);
+  assert.deepEqual(
+    all(
+      f.db,
+      `SELECT c.reference,a.outcome FROM attempts a JOIN cases c ON c.id=a.case_id
+       WHERE c.portfolio_id=? ORDER BY c.reference`,
+      f.portfolioId,
+    ).map((row) => [row.reference, row.outcome]),
+    [
+      ['AUTO-001', 'not_reached'],
+      ['AUTO-002', 'willing_to_pay'],
+      ['AUTO-003', 'callback'],
+      ['AUTO-004', 'document_request'],
+      ['AUTO-005', 'disputed'],
+      ['AUTO-006', 'invalid_contact'],
+    ],
+  );
   assert.ok(result.tasks.some((task) => task.owner === 'Helena' && task.status === 'completed'));
   assert.ok(result.tasks.some((task) => task.owner === 'Rafael' && task.status === 'waiting'));
   assert.ok(result.tasks.some((task) => task.owner === 'Clara' && task.status === 'scheduled'));
@@ -61,7 +77,10 @@ test('mock autonomous run plans safe work, executes specialists and never contac
   assert.equal(one(f.db, "SELECT suppressed FROM cases WHERE reference='AUTO-006'").suppressed, 1);
 
   const repeat = await f.planner.runSimulation(f.portfolioId);
-  assert.equal(repeat.latestRun.planned, 0);
+  assert.equal(repeat.latestRun.id, result.latestRun.id);
+  assert.equal(repeat.lastCheck.planned, 0);
+  assert.equal(repeat.lastCheck.skipped, 7);
+  assert.equal(repeat.tasks.length, result.tasks.length);
   assert.equal(one(f.db, 'SELECT COUNT(*) n FROM autonomy_actions').n, 6);
 
   f.planner.executeRun(result.latestRun.id, new Date(Date.now() + 25 * 3600000));

@@ -403,6 +403,12 @@ export default function PortfolioDetail({
                       </div>
                     ))}
                   </div>
+                  {autonomy.lastCheck?.id !== autonomy.latestRun.id && (
+                    <div className="autonomy-noop">
+                      Latest scan found no new work: {count(autonomy.lastCheck.scanned)} cases
+                      checked, {count(autonomy.lastCheck.skipped)} already covered.
+                    </div>
+                  )}
                   <div className="autonomy-task-list">
                     {autonomy.tasks.map((task) => (
                       <div key={task.id}>

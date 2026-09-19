@@ -192,7 +192,7 @@ flowchart TD
     Policy -->|Portfolio paused| Cancel["Cancel queued contact before execution"]
 ```
 
-The authenticated portfolio view can run this cycle against seven synthetic cases covering no response, payment-option request, callback, document request, dispute, wrong person and missing contact data. The demo creates no external provider contact. It records tasks, semantic decision traces, simulated attempts and follow-on dependencies in the same case state used by the oversight UI. A repeated run with unchanged state creates no duplicate action. Pausing after planning cancels queued contact work before execution.
+The authenticated portfolio view can run this cycle against seven synthetic cases covering no response, payment-option request, callback, document request, dispute, wrong person and missing contact data. The demo creates no external provider contact. It records tasks, semantic decision traces, simulated attempts and follow-on dependencies in the same case state used by the oversight UI. A repeated run with unchanged state creates no duplicate action, remains visible as a no-op scan and does not hide the last actionable run. Pausing after planning cancels queued contact work before execution.
 
 The optional worker heartbeat only plans active portfolios when `AUTONOMOUS_PLANNER_ENABLED=true`; it is disabled by default. Live channel adapters are not connected to these planner commands yet. Existing portfolio campaigns and isolated voice-demo fulfillment remain for compatibility and have not been migrated into the canonical planner task schema.
 

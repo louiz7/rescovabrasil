@@ -169,6 +169,14 @@
   color: #67756e;
   font-size: 11px;
 }
+.autonomy-noop {
+  margin: -4px 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f3f7f0;
+  color: #5e7056;
+  font-size: 12px;
+}
 .autonomy-task-list {
   border: 1px solid #e6eae8;
   border-radius: 12px;

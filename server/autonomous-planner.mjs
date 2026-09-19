@@ -52,7 +52,10 @@ export function ensureAutonomyTables(db) {
 export function ensureAutonomyDemoPortfolio(db) {
   ensureAutonomyTables(db);
   const stored = one(db, "SELECT value FROM settings WHERE key='autonomy_demo_portfolio'");
-  if (stored && one(db, 'SELECT id FROM portfolios WHERE id=?', stored.value)) return stored.value;
+  if (stored && one(db, 'SELECT id FROM portfolios WHERE id=?', stored.value)) {
+    repairMockAttemptOutcomes(db);
+    return stored.value;
+  }
   const portfolioId = id();
   run(
     db,
@@ -97,6 +100,25 @@ export function ensureAutonomyDemoPortfolio(db) {
   }
   run(db, "INSERT OR REPLACE INTO settings VALUES ('autonomy_demo_portfolio',?)", portfolioId);
   return portfolioId;
+}
+
+function repairMockAttemptOutcomes(db) {
+  const mappings = {
+    payment_options: 'willing_to_pay',
+    callback: 'callback',
+    document_request: 'document_request',
+    dispute: 'disputed',
+  };
+  for (const [profile, outcome] of Object.entries(mappings))
+    run(
+      db,
+      `UPDATE attempts SET outcome=?,updated_at=? WHERE outcome IS NULL AND
+       message='Autonomous demo action — no external communication.' AND
+       case_id IN (SELECT case_id FROM autonomy_mock_profiles WHERE outcome=?)`,
+      outcome,
+      now(),
+      profile,
+    );
 }
 
 function caseSnapshot(db, c, operation) {
@@ -526,6 +548,12 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
     if (outcome === 'payment_options') {
       run(
         db,
+        "UPDATE attempts SET outcome='willing_to_pay',updated_at=? WHERE id=?",
+        stamp,
+        attemptId,
+      );
+      run(
+        db,
         "UPDATE cases SET outcome='willing_to_pay',status='engaged',review_required=0 WHERE id=?",
         task.case_id,
       );
@@ -534,6 +562,7 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
       return;
     }
     if (outcome === 'callback') {
+      run(db, "UPDATE attempts SET outcome='callback',updated_at=? WHERE id=?", stamp, attemptId);
       run(
         db,
         "UPDATE cases SET outcome='callback',status='engaged',review_required=0 WHERE id=?",
@@ -550,12 +579,19 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
       return;
     }
     if (outcome === 'document_request') {
+      run(
+        db,
+        "UPDATE attempts SET outcome='document_request',updated_at=? WHERE id=?",
+        stamp,
+        attemptId,
+      );
       run(db, "UPDATE cases SET status='engaged',review_required=0 WHERE id=?", task.case_id);
       complete(task, { outcome, nextAction: 'Helena retrieves requested evidence.' });
       childTask(task, 'fulfill_document', 'Participant requested a current account statement.');
       return;
     }
     if (outcome === 'dispute') {
+      run(db, "UPDATE attempts SET outcome='disputed',updated_at=? WHERE id=?", stamp, attemptId);
       run(
         db,
         "UPDATE cases SET outcome='disputed',status='review',review_required=1 WHERE id=?",
@@ -733,15 +769,32 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
   }
 
   function details(portfolioId, runId = null) {
-    const latest = runId
+    const lastCheck = runId
       ? one(db, 'SELECT * FROM autonomy_runs WHERE id=? AND portfolio_id=?', runId, portfolioId)
       : one(
           db,
           'SELECT * FROM autonomy_runs WHERE portfolio_id=? ORDER BY created_at DESC LIMIT 1',
           portfolioId,
         );
+    const latest =
+      (lastCheck?.planned > 0 ? lastCheck : null) ||
+      one(
+        db,
+        'SELECT * FROM autonomy_runs WHERE portfolio_id=? AND planned>0 ORDER BY created_at DESC LIMIT 1',
+        portfolioId,
+      ) ||
+      lastCheck;
     return {
       enabled: Boolean(config.autonomousPlannerEnabled),
+      lastCheck: lastCheck
+        ? {
+            id: lastCheck.id,
+            scanned: lastCheck.scanned,
+            planned: lastCheck.planned,
+            skipped: lastCheck.skipped,
+            created_at: lastCheck.created_at,
+          }
+        : null,
       latestRun: latest
         ? { ...latest, summary: latest.summary_json ? JSON.parse(latest.summary_json) : null }
         : null,
