@@ -5,6 +5,7 @@ import { createAgentWorkflows } from './agent-workflows.mjs';
 import { createAgentRunner } from './agent-models.mjs';
 import { createEmailWorkflows } from './email-workflows.mjs';
 import { startWorkerRuntime } from './worker-runtime.mjs';
+import { createAutonomousPlanner } from './autonomous-planner.mjs';
 
 const config = configuration();
 if (!/^postgres(?:ql)?:\/\//.test(config.dbPath))
@@ -19,9 +20,11 @@ run(db, "INSERT OR IGNORE INTO settings VALUES ('mode',?)", config.mode);
 ensureDemoPlatform(db);
 const agents = createAgentWorkflows(db, config, { runAgent: createAgentRunner(config) });
 const email = createEmailWorkflows(db, config, agents);
+const planner = createAutonomousPlanner(db, config);
 const runtime = startWorkerRuntime(db, config, {
   agents,
   email,
+  planner,
   kind: process.env.WORKER_KIND || 'all',
 });
 let closing = false;

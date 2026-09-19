@@ -38,6 +38,7 @@ const workerRuntime = config.appWorkersEnabled
   ? startWorkerRuntime(db, config, {
       agents: app.locals.agentWorkflows,
       email: app.locals.emailWorkflows,
+      planner: app.locals.autonomousPlanner,
     })
   : null;
 const tick = setInterval(async () => {

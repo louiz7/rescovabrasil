@@ -1,8 +1,9 @@
 import { id, now, run, one, event, task } from './db.mjs';
 import { createPortfolio, createCampaign, recordOutcome, finishDispatch } from './service.mjs';
+import { ensureAutonomyDemoPortfolio } from './autonomous-planner.mjs';
 
 export function seedDemo(db) {
-  if (one(db, 'SELECT id FROM cases LIMIT 1')) return;
+  if (one(db, 'SELECT id FROM cases LIMIT 1')) return ensureAutonomyDemoPortfolio(db);
   const p = createPortfolio(db, {
     name: 'Horizonte · Personal loans',
     creditor: 'Financeira Horizonte (fictional)',
@@ -118,4 +119,5 @@ export function seedDemo(db) {
       aid,
     );
   });
+  ensureAutonomyDemoPortfolio(db);
 }

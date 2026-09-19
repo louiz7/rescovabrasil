@@ -1,6 +1,7 @@
 import { agentIdentities } from '../shared/agent-identities.mjs';
-export function agentRegistry(config, workflows) {
+export function agentRegistry(config, workflows, planner = null) {
   const stats = workflows.agentStats?.() || {};
+  if (planner?.stats) stats.case_planner = planner.stats();
   const profile = (role) => {
     const p = role === 'sms' ? config.agentSms : config.agentSupervisor;
     return { provider: p?.provider || 'openai', model: p?.model || null, configured: !!p?.apiKey };
@@ -13,6 +14,32 @@ export function agentRegistry(config, workflows) {
     configured: !!config.typeSafeApiKey,
   };
   const rows = [
+    {
+      id: 'case_planner',
+      kind: 'decision',
+      responsibilities: [
+        'Inspect active portfolios on a bounded heartbeat',
+        'Create durable goals and assign permitted next actions',
+        'Replan from recorded outcomes and explicit dependencies',
+      ],
+      limitations: [
+        'Cannot bypass contact policy or suppression',
+        'Cannot send directly or change financial truth',
+        'Uses deterministic fallback when Jev is unavailable or uncertain',
+      ],
+      ...agentIdentities.case_planner,
+      description:
+        'Turns active portfolio state into bounded agent tasks, then replans from their recorded outcomes.',
+      ...decisionProfile,
+      execution: config.autonomousPlannerEnabled ? 'Daily and event heartbeat' : 'Manual demo runs',
+      scope: 'Active portfolios and case next actions',
+      capabilities: [
+        'Bounded portfolio scan',
+        'Typed next-action selection',
+        'Durable task creation',
+        'Outcome-driven replanning',
+      ],
+    },
     {
       id: 'inbound_triage',
       kind: 'decision',
@@ -246,6 +273,42 @@ export function agentRegistry(config, workflows) {
       },
     ],
     relationships: [
+      {
+        from: 'coordinator',
+        to: 'case_planner',
+        label: 'Trigger portfolio heartbeat',
+        kind: 'handoff',
+      },
+      {
+        from: 'case_planner',
+        to: 'payment_conversation_agent',
+        label: 'Assign written outreach',
+        kind: 'handoff',
+      },
+      {
+        from: 'case_planner',
+        to: 'openai_voice',
+        label: 'Assign voice outreach',
+        kind: 'handoff',
+      },
+      {
+        from: 'case_planner',
+        to: 'document_librarian',
+        label: 'Assign document work',
+        kind: 'handoff',
+      },
+      {
+        from: 'case_planner',
+        to: 'supervisor',
+        label: 'Assign complex reasoning',
+        kind: 'handoff',
+      },
+      {
+        from: 'case_planner',
+        to: 'shared_context',
+        label: 'Read current case state',
+        kind: 'information',
+      },
       {
         from: 'coordinator',
         to: 'inbound_triage',

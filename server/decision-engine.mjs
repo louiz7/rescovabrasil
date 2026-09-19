@@ -2,6 +2,7 @@ import { choice, noul, TypeSafeClient } from '@typesafe-ai/sdk';
 
 export const INBOUND_TRIAGE_VERSION = 'inbound-triage-v1';
 export const ESCALATION_ROUTING_VERSION = 'escalation-routing-v1';
+export const CASE_ACTION_VERSION = 'case-next-action-v1';
 
 const intentCriteria = {
   payment_options: 'The participant asks how, when, or through which method they can pay.',
@@ -104,6 +105,25 @@ export function escalationRoutingQuestions() {
   };
 }
 
+export function caseActionQuestions() {
+  return {
+    next_action: choice(
+      'Choose the best next action for this case. Choose only an action explicitly listed in `allowedActions`. Prefer respectful continuity, the configured channel order and the action most likely to obtain useful new information.',
+      {
+        call: 'Use an AI phone call when voice is allowed and a synchronous conversation is useful.',
+        send_sms: 'Use SMS for a short, low-friction written contact or continuation.',
+        send_email:
+          'Use email when longer written context or document-friendly communication is useful.',
+        continue_conversation: 'Continue an existing participant conversation with shared context.',
+        reason_case: 'Use open-ended case reasoning for a dispute, contradiction or exception.',
+        wait_payment_verification:
+          'Wait for authoritative payment evidence after payment is reported.',
+        await_information: 'Wait because required contact details or case information are missing.',
+      },
+    ),
+  };
+}
+
 function routeCandidate(answers) {
   const intent = answers.primary_intent;
   return {
@@ -185,6 +205,34 @@ export function createDecisionEngine(config, { client } = {}) {
           confidence: result.answers.route.confidence,
           probabilities: result.answers.route.probabilities,
           requiresSupervisorProbability: result.answers.requires_supervisor_reasoning.noul,
+        },
+        usage: result.usage,
+        latencyMs: Date.now() - started,
+      };
+    },
+    async evaluateCaseAction(state, { signal } = {}) {
+      const started = Date.now();
+      const result = await getClient().systemOne(
+        {
+          state,
+          questions: caseActionQuestions(),
+          model: config.typeSafeModel || 'jev-latest',
+        },
+        {
+          signal,
+          timeout: config.typeSafeTimeoutMs || 10000,
+          retry: { maxRetries: 1 },
+        },
+      );
+      return {
+        provider,
+        model: result.model,
+        questionSet: CASE_ACTION_VERSION,
+        answers: result.answers,
+        proposedAction: {
+          action: result.answers.next_action.choice,
+          confidence: result.answers.next_action.confidence,
+          probabilities: result.answers.next_action.probabilities,
         },
         usage: result.usage,
         latencyMs: Date.now() - started,

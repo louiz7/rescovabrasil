@@ -8,6 +8,7 @@ Default delivery is **virtual SMS inside the authenticated operator app**. An ag
 
 | Role        | Current responsibility                                          | Implementation                                                         |
 | ----------- | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Mateo       | Plan one bounded next action for each eligible portfolio case   | Durable planner tasks; Jev Choice with deterministic fallback          |
 | Clara       | English GPT-Live conversation                                   | Voice model with delegated domain tools                                |
 | Lucas       | GPT-Live tool execution decisions                               | Configurable backend model                                             |
 | Lia         | Classify inbound intent and critical signals                    | Jev typed decision; deterministic application actions                  |
@@ -169,21 +170,31 @@ stateDiagram-v2
 
 A recheck creates another supervisor job and re-evaluates current restrictions; it does not grant permission or clear a reported payment, dispute or contact stop. Information and specialist waits also monitor eligible context changes. An unchanged missing dependency does not create an endless model loop. There is no configured human channel for these virtual workflows. Requests for a person must be acknowledged transparently and remain blocked by that missing channel, not falsely reported as transferred.
 
-## 5. Portfolio operation today
+## 5. Autonomous portfolio work cycle
 
 ```mermaid
-flowchart LR
-    Upload["Import and validate cases"] --> Portfolio["Assign portfolio"]
-    Portfolio --> Activate["Activate portfolio"]
-    Activate --> Enroll["Enroll eligible cases in internal execution runs"]
-    Enroll --> Attempts["Existing outreach queue and channel adapters"]
-    Attempts --> Outcomes["Record attempts and outcomes"]
-    Outcomes --> Overview["Portfolio progress and open tasks"]
-    Activate --> Pause["Pause portfolio"]
-    Pause --> Hold["Hold new work"]
+flowchart TD
+    Trigger["Manual demo run or optional daily heartbeat"] --> Mateo["Mateo scans active portfolio"]
+    Mateo --> State["Load canonical case, attempts, policy and channel order"]
+    State --> Gate{"Eligible and not already covered?"}
+    Gate -->|No| Skip["Record skip or existing dependency"]
+    Gate -->|Yes| Candidates["Build closed set of permitted next actions"]
+    Candidates --> Choice["Jev selects among permitted actions"]
+    Choice --> Validate{"Choice valid and confidence >= 0.75?"}
+    Validate -->|No| Fallback["Use deterministic channel-order fallback"]
+    Validate -->|Yes| Task["Create idempotent durable agent task"]
+    Fallback --> Task
+    Task --> Policy["Recheck pause, suppression, destination, attempt limit and concurrency"]
+    Policy --> Roles["Clara, Marina, Helena, Rafael or Tiago"]
+    Roles --> Result["Persist synthetic action evidence and structured outcome"]
+    Result --> Child["Create completed, waiting or scheduled child work"]
+    Child --> State
+    Policy -->|Portfolio paused| Cancel["Cancel queued contact before execution"]
 ```
 
-This existing portfolio flow is separate from isolated voice-demo fulfillment. Its legacy outcome enums, imported-case review queues and explicit operator controls remain for compatibility; this change does not migrate every historic or manual process into autonomous execution. It does not yet implement a model-driven daily strategy loop or verified payment reconciliation. Demo source portfolios stay excluded from prospecting.
+The authenticated portfolio view can run this cycle against seven synthetic cases covering no response, payment-option request, callback, document request, dispute, wrong person and missing contact data. The demo creates no external provider contact. It records tasks, semantic decision traces, simulated attempts and follow-on dependencies in the same case state used by the oversight UI. A repeated run with unchanged state creates no duplicate action. Pausing after planning cancels queued contact work before execution.
+
+The optional worker heartbeat only plans active portfolios when `AUTONOMOUS_PLANNER_ENABLED=true`; it is disabled by default. Live channel adapters are not connected to these planner commands yet. Existing portfolio campaigns and isolated voice-demo fulfillment remain for compatibility and have not been migrated into the canonical planner task schema.
 
 ## Target architecture — planned, not implemented
 
@@ -191,7 +202,7 @@ This existing portfolio flow is separate from isolated voice-demo fulfillment. I
 flowchart TD
     Events["Messages, timers, provider and payment events"] --> Inbox["Validated event inbox"]
     Inbox --> Coordinator["Durable coordinator and task state"]
-    Coordinator --> Planner["Bounded case planner"]
+    Coordinator --> Planner["Mateo: bounded case planner"]
     Planner --> Decision["DecisionEngine: typed route and confidence"]
     Planner --> Roles["Specialized agents: Clara, Marina, Helena, Rafael and payment role"]
     Decision --> Planner
@@ -211,7 +222,7 @@ flowchart TD
     Providers --> Log
 ```
 
-Keep domain tools, task state, storage interfaces, goals and message contracts independent of model providers. Goals, success criteria, step/tool/cost budgets and stop conditions belong to durable tasks. Working context is bounded; canonical facts and evidence remain source-linked. Introduce a new agent only when its responsibilities, authority or evaluation criteria differ enough to justify it. A decision model may route work but never executes side effects directly. Planned steps include real two-way delivery, stronger external document-release authorization, after-call review, payment reconciliation, continuous portfolio planning and shadow evaluation of typed decision routing.
+Keep domain tools, task state, storage interfaces, goals and message contracts independent of model providers. Goals, success criteria, step/tool/cost budgets and stop conditions belong to durable tasks. Working context is bounded; canonical facts and evidence remain source-linked. Introduce a new agent only when its responsibilities, authority or evaluation criteria differ enough to justify it. A decision model may route work but never executes side effects directly. Planned steps include migrating existing workflows to the canonical command schema, real two-way delivery, stronger external document-release authorization, after-call review, payment reconciliation, event-triggered replanning and representative decision evaluation.
 
 ## Code map and acceptance
 
@@ -220,6 +231,7 @@ Keep domain tools, task state, storage interfaces, goals and message contracts i
 - Document storage/retrieval: server/documents.mjs
 - Ordering, shared context, delivery and cancellation: server/agent-workflows.mjs
 - Model adapter and written agent policy: server/agent-models.mjs
+- Portfolio planner, semantic choice, task and mock action records: server/autonomous-planner.mjs
 - Case documents and conversation attachments: src/CaseDocuments.jsx, src/AgentConversations.jsx
 
 To test manually: start a fresh browser voice test, confirm Ana Silva, ask for the original loan agreement, wait for the saved request, and end the test. Open Demo SMS conversations, download the attachment, ask a question about it, then request the account statement. No payment acceptance is needed. Test a payment agreement in the same call to confirm both tasks share one case.

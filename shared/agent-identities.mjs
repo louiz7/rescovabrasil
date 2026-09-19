@@ -8,4 +8,5 @@ export const agentIdentities = Object.freeze({
   inbound_triage: { name: 'Lia', role: 'Inbound triage' },
   context_router: { name: 'Bento', role: 'Context router' },
   resolution_router: { name: 'Tiago', role: 'Resolution router' },
+  case_planner: { name: 'Mateo', role: 'Portfolio planner' },
 });

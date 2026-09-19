@@ -5,7 +5,7 @@ import { run, now } from './db.mjs';
 export function startWorkerRuntime(
   db,
   config,
-  { agents, email, kind = 'all', workerId = randomUUID() },
+  { agents, email, planner = null, kind = 'all', workerId = randomUUID() },
 ) {
   const roles = {
     agent: kind === 'all' || kind === 'agent',
@@ -45,6 +45,7 @@ export function startWorkerRuntime(
     invoke();
   }
   if (roles.agent) schedule('Agent', () => agents.tick(), 1000);
+  if (roles.agent && planner) schedule('Portfolio planner', () => planner.tick(), 60000);
   if (roles.email) schedule('Email', () => email.tick(), 15000);
   if (roles.ingestion && agents.library.drainIngestion)
     schedule('Document ingestion', () => agents.library.drainIngestion(), 2000);

@@ -83,7 +83,8 @@ test('accepted voice agreement waits for source end then continues as one durabl
   d = await req('/agent-workflows/' + c.id);
   assert.equal(d.messages.length, 3);
   const registry = await req('/agents');
-  assert.equal(registry.agents.length, 8);
+  assert.equal(registry.agents.length, 9);
+  assert.ok(registry.agents.some((a) => a.name === 'Mateo'));
   assert.ok(registry.agents.some((a) => a.name === 'Clara'));
   assert.ok(registry.agents.some((a) => a.name === 'Lia'));
   assert.ok(registry.agents.some((a) => a.name === 'Bento'));

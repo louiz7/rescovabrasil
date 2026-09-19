@@ -130,6 +130,88 @@
   gap: 10px;
   margin-top: 14px;
 }
+.autonomy-section {
+  border-top: 1px solid #e6eae8;
+  padding-top: 24px;
+}
+.autonomy-empty {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px dashed #cfd9d3;
+  border-radius: 12px;
+  background: #f8faf8;
+  font-size: 13px;
+}
+.autonomy-empty span {
+  color: #67756e;
+}
+.autonomy-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+.autonomy-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+  border: 1px solid #e6eae8;
+  border-radius: 10px;
+}
+.autonomy-summary strong {
+  font-size: 20px;
+}
+.autonomy-summary span,
+.autonomy-task-list span,
+.autonomy-task-list small {
+  color: #67756e;
+  font-size: 11px;
+}
+.autonomy-task-list {
+  border: 1px solid #e6eae8;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.autonomy-task-list > div {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-bottom: 1px solid #edf0ee;
+}
+.autonomy-task-list > div:last-child {
+  border-bottom: 0;
+}
+.autonomy-task-list > div > div {
+  display: grid;
+  gap: 3px;
+}
+.autonomy-task-list p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.autonomy-task-state {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #8c998f;
+}
+.autonomy-task-state.completed {
+  background: #2a8063;
+}
+.autonomy-task-state.waiting,
+.autonomy-task-state.scheduled {
+  background: #d19a3b;
+}
+.autonomy-task-state.failed,
+.autonomy-task-state.cancelled {
+  background: #b75555;
+}
 @media (max-width: 600px) {
   .portfolio-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -140,5 +222,14 @@
   .portfolio-progress-title {
     align-items: flex-start;
     flex-direction: column;
+  }
+  .autonomy-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .autonomy-task-list > div {
+    grid-template-columns: 8px minmax(0, 1fr);
+  }
+  .autonomy-task-list > div > small {
+    grid-column: 2;
   }
 }

@@ -4,6 +4,7 @@ import { createEmailWorkflows } from './email-workflows.mjs';
 import { createAgentWorkflows } from './agent-workflows.mjs';
 import { createAgentRunner } from './agent-models.mjs';
 import { agentRegistry } from './agent-registry.mjs';
+import { createAutonomousPlanner } from './autonomous-planner.mjs';
 import {
   adoptLegacyPortfolios,
   portfolioList,
@@ -57,7 +58,7 @@ import { providerStatus, inboundMessage, receiveOnce } from './webhooks.mjs';
 export function createApp(
   db,
   config,
-  { voiceFetch, voiceTestTtlMs, twilioFetch, agentRun, emailTransport } = {},
+  { voiceFetch, voiceTestTtlMs, twilioFetch, agentRun, emailTransport, plannerDecision } = {},
 ) {
   assert(
     config.password.length >= 12 || config.mode === 'demo',
@@ -87,6 +88,10 @@ export function createApp(
     runAgent: agentRun || createAgentRunner(config),
   });
   app.locals.agentWorkflows = agentWorkflows;
+  const autonomousPlanner = createAutonomousPlanner(db, config, {
+    evaluateDecision: plannerDecision,
+  });
+  app.locals.autonomousPlanner = autonomousPlanner;
   const emailWorkflows = createEmailWorkflows(db, config, agentWorkflows, {
     transport: emailTransport,
   });
@@ -394,7 +399,9 @@ export function createApp(
   app.use('/api/cases/:caseId/documents', agentWorkflows.library.router);
   app.use('/api/agent-workflows', agentWorkflows.router);
   app.use('/api/email-test', emailWorkflows.router);
-  app.get('/api/agents', (_req, res) => res.json(agentRegistry(config, agentWorkflows)));
+  app.get('/api/agents', (_req, res) =>
+    res.json(agentRegistry(config, agentWorkflows, autonomousPlanner)),
+  );
   app.get('/api/workers', (_req, res) => {
     const hasHealth = one(
       db,
@@ -442,6 +449,12 @@ export function createApp(
   );
   app.post('/api/portfolios/:id/pause', (req, res) =>
     res.json(pausePortfolio(db, req.params.id, config.mode)),
+  );
+  app.get('/api/portfolios/:id/autonomy', (req, res) =>
+    res.json(autonomousPlanner.details(req.params.id)),
+  );
+  app.post('/api/portfolios/:id/autonomy/run', async (req, res) =>
+    res.json(await autonomousPlanner.runSimulation(req.params.id)),
   );
   app.post('/api/portfolios', (req, res) => res.status(201).json(createPortfolio(db, req.body)));
   app.get('/api/cases', (req, res) => {

@@ -43,6 +43,7 @@ export default function PortfolioDetail({
   onSimulate,
 }) {
   const [portfolio, setPortfolio] = useState(null);
+  const [autonomy, setAutonomy] = useState(null);
   const [selected, setSelected] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -54,9 +55,10 @@ export default function PortfolioDetail({
     setError('');
     async function load() {
       try {
-        const value = await request(id);
+        const [value, autonomyValue] = await Promise.all([request(id), request(`${id}/autonomy`)]);
         if (stopped) return;
         setPortfolio(value);
+        setAutonomy(autonomyValue);
         if (!initialized.current) {
           setSelected(
             value.channels?.length
@@ -96,6 +98,20 @@ export default function PortfolioDetail({
       setBusy(false);
     }
   }
+  async function runAutonomy() {
+    setBusy(true);
+    setError('');
+    try {
+      const result = await request(`${id}/autonomy/run`, {});
+      setAutonomy(result);
+      setPortfolio(await request(id));
+      await onChanged?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
   function move(index, offset) {
     setSelected((current) => {
       const next = [...current];
@@ -107,6 +123,7 @@ export default function PortfolioDetail({
   const metrics = portfolio?.metrics || {};
   const active = portfolio?.status === 'active';
   const demo = portfolio?.mode === 'demo';
+  const autonomousDemo = portfolio?.name === 'Autonomous collections demo';
   const policy = settings?.policy || {};
   const hasAvailableChannel = selected.some((key) => settings?.capabilities?.[key]?.available);
   const date = (value) =>
@@ -332,12 +349,82 @@ export default function PortfolioDetail({
                           ? 'Activate demo portfolio'
                           : 'Go live'}
                 </button>
-                {demo && active && onSimulate && (
+                {demo && active && onSimulate && !autonomousDemo && (
                   <button className="secondary" onClick={onSimulate}>
                     Simulate portfolio contact
                   </button>
                 )}
+                {demo && active && autonomousDemo && (
+                  <button className="primary" disabled={busy} onClick={runAutonomy}>
+                    <Play size={16} />
+                    {busy ? 'Running agents…' : 'Run autonomous work cycle'}
+                  </button>
+                )}
               </div>
+            </section>
+          )}
+
+          {!portfolio.automationBlocked && autonomousDemo && (
+            <section className="autonomy-section">
+              <div className="portfolio-progress-title">
+                <div>
+                  <h3>Autonomous work cycle</h3>
+                  <p className="muted small-text">
+                    Mateo plans one safe next action per case. Specialist agents execute mock work
+                    and feed results back into the shared case state.
+                  </p>
+                </div>
+                {autonomy?.latestRun && (
+                  <span className={`badge ${autonomy.latestRun.status}`}>
+                    {autonomy.latestRun.status.replaceAll('_', ' ')}
+                  </span>
+                )}
+              </div>
+              {!autonomy?.latestRun ? (
+                <div className="autonomy-empty">
+                  <strong>Ready for the first run</strong>
+                  <span>
+                    Activate this portfolio, then run the work cycle. No external call, SMS or email
+                    is sent.
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="autonomy-summary">
+                    {[
+                      ['Cases scanned', autonomy.latestRun.scanned],
+                      ['Tasks planned', autonomy.latestRun.planned],
+                      ['Tasks executed', autonomy.latestRun.executed],
+                      ['Waiting / scheduled', autonomy.latestRun.waiting],
+                    ].map(([title, value]) => (
+                      <div key={title}>
+                        <strong>{count(value)}</strong>
+                        <span>{title}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="autonomy-task-list">
+                    {autonomy.tasks.map((task) => (
+                      <div key={task.id}>
+                        <span className={`autonomy-task-state ${task.status}`} />
+                        <div>
+                          <strong>{task.name || task.reference}</strong>
+                          <span>
+                            {task.owner} · {(task.kind || '').replaceAll('_', ' ')}
+                            {task.channel ? ` · ${channels[task.channel] || task.channel}` : ''}
+                          </span>
+                          <p>{task.result?.nextAction || task.result?.detail || task.reason}</p>
+                        </div>
+                        <small>{task.status.replaceAll('_', ' ')}</small>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="muted small-text">
+                    {autonomy.decisions.length} semantic channel decisions recorded. All outcomes in
+                    this view are synthetic and provider contacts remain zero.
+                  </p>
+                </>
+              )}
             </section>
           )}
 
@@ -376,8 +463,9 @@ export default function PortfolioDetail({
             )}
           </section>
           <p className="muted small-text">
-            Autonomous conversation review and coordination between specialist agents are planned.
-            This view currently reflects recorded outreach, agreements and follow-up tasks.
+            The planner and specialist task loop are active for mock runs. Provider-backed
+            autonomous execution remains disabled until its adapters and production controls are
+            connected.
           </p>
           <div className="portfolio-actions">
             {onCases && (

@@ -41,6 +41,7 @@ export function configuration(env = process.env) {
       Math.min(1, Number(env.TYPESAFE_ACTIVE_MIN_CONFIDENCE) || 0.75),
     ),
     typeSafeTimeoutMs: Math.max(1000, Number(env.TYPESAFE_TIMEOUT_MS) || 10000),
+    autonomousPlannerEnabled: env.AUTONOMOUS_PLANNER_ENABLED === 'true',
     appWorkersEnabled: env.APP_WORKERS_ENABLED !== 'false',
     agentWorkerConcurrency: Math.max(1, Math.min(32, Number(env.AGENT_WORKER_CONCURRENCY) || 4)),
     emailWorkerConcurrency: Math.max(1, Math.min(16, Number(env.EMAIL_WORKER_CONCURRENCY) || 2)),

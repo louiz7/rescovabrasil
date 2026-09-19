@@ -39,6 +39,7 @@ test('agent registry preserves configured profiles and tracked metrics without i
   assert.equal(registry.agents.find((a) => a.id === 'inbound_triage').name, 'Lia');
   assert.equal(registry.agents.find((a) => a.id === 'context_router').name, 'Bento');
   assert.equal(registry.agents.find((a) => a.id === 'resolution_router').name, 'Tiago');
+  assert.equal(registry.agents.find((a) => a.id === 'case_planner').name, 'Mateo');
   assert.equal(JSON.stringify(registry).includes('private-'), false);
   assert.equal(
     registry.agents.find((agent) => agent.id === 'document_librarian').model,
@@ -51,7 +52,7 @@ test('agent map relationships reference existing distinct nodes and distinguish 
   const nodes = [...registry.agents, registry.coordinator, ...registry.infrastructure];
   const ids = new Set(nodes.map((node) => node.id));
   assert.equal(ids.size, nodes.length);
-  assert.equal(registry.agents.length, 8);
+  assert.equal(registry.agents.length, 9);
   assert.equal(registry.coordinator.id, 'coordinator');
   assert.equal(registry.coordinator.kind, 'Application service');
   const edges = new Set();

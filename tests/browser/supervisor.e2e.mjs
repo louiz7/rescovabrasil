@@ -160,7 +160,7 @@ test('agent directory, detail and team map stay focused and usable on mobile', a
   await page.getByLabel('Workspace password').fill('browser-test-password');
   await page.getByRole('button', { name: 'Sign in to workspace' }).click();
   await page.getByRole('button', { name: 'Agents', exact: true }).click();
-  await expect(page.locator('.team-card')).toHaveCount(5);
+  await expect(page.locator('.team-card')).toHaveCount(9);
   await expect(page.getByRole('region', { name: 'Supervisor escalations' })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/rescova-team-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'View Marina', exact: true }).click();
@@ -170,7 +170,7 @@ test('agent directory, detail and team map stay focused and usable on mobile', a
   await page.screenshot({ path: '/tmp/rescova-agent-detail.png', fullPage: true });
   await page.getByRole('button', { name: 'All agents', exact: true }).click();
   await page.getByRole('tab', { name: 'Team map', exact: true }).click();
-  await expect(page.locator('.team-map-node')).toHaveCount(5);
+  await expect(page.locator('.team-map-node')).toHaveCount(9);
   await page.getByRole('button', { name: 'Shared case context Application service' }).click();
   await expect(
     page.getByRole('heading', { name: 'Shared case context’s connections' }),
@@ -192,7 +192,7 @@ test('agent directory, detail and team map stay focused and usable on mobile', a
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
   ).toBeTruthy();
   await page.getByRole('tab', { name: 'Team', exact: true }).click();
-  await expect(page.locator('.team-card')).toHaveCount(5);
+  await expect(page.locator('.team-card')).toHaveCount(9);
   await page.screenshot({ path: '/tmp/rescova-team-mobile.png', fullPage: true });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),

@@ -301,6 +301,7 @@ const positions = {
   voice_backend: [115, 280],
   inbound_triage: [350, 105],
   context_router: [350, 280],
+  case_planner: [350, 430],
   payment_conversation_agent: [585, 105],
   resolution_router: [585, 280],
   supervisor: [820, 105],
@@ -330,7 +331,7 @@ function TeamMap({ data, onSelect }) {
             <span>Conversation</span>
             <span>Specialists</span>
           </div>
-          <svg viewBox="0 0 940 390" aria-hidden="true">
+          <svg viewBox="0 0 940 520" aria-hidden="true">
             <defs>
               <marker
                 id="team-arrow"

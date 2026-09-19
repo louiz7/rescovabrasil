@@ -46,6 +46,14 @@ export function agentTaskList(
     'Delivery worker' owner,d.status,'email' channel,d.error,NULL due_at,d.created_at,NULL next_action
     FROM email_deliveries d JOIN agent_conversations c ON c.id=d.conversation_id
     ${hasTickets ? 'WHERE NOT EXISTS (SELECT 1 FROM document_tickets t WHERE t.delivery_id=d.id OR t.message_id=d.message_id)' : ''}`);
+  if (exists('autonomy_tasks'))
+    selects.push(`SELECT 'autonomy:' || t.id id,'autonomy_task' source,
+      CASE t.kind WHEN 'call' THEN 'AI phone outreach' WHEN 'send_sms' THEN 'SMS outreach'
+        WHEN 'send_email' THEN 'Email outreach' WHEN 'continue_conversation' THEN 'Continue conversation'
+        WHEN 'fulfill_document' THEN 'Document fulfillment' WHEN 'reason_case' THEN 'Case reasoning'
+        WHEN 'wait_payment_verification' THEN 'Payment verification' WHEN 'await_information' THEN 'Missing information'
+        ELSE t.kind END title,t.case_id,NULL conversation_id,t.owner,t.status,t.channel,NULL error,
+      t.due_at,t.created_at,t.reason next_action FROM autonomy_tasks t`);
   if (!selects.length)
     return {
       rows: [],
@@ -54,7 +62,7 @@ export function agentTaskList(
       offset,
       limit,
     };
-  const ownerFilter = ['Helena', 'Marina', 'Rafael', 'Clara', 'Lucas'].includes(owner)
+  const ownerFilter = ['Helena', 'Marina', 'Rafael', 'Clara', 'Lucas', 'Tiago'].includes(owner)
     ? ` WHERE t.owner='${owner}'`
     : '';
   // Date-only schedules follow the case timezone; deadlines are not execution dates.
@@ -81,7 +89,8 @@ export function agentTaskList(
     WHEN t.status IN ('completed','simulated_completed','ready','sent','submitted','cancelled','expired') THEN 'completed'
     WHEN t.status IN ('running','processing','sending') THEN 'ready'
     WHEN t.status IN ('failed','uncertain','paused','blocked_policy','needs_ocr') OR t.status LIKE 'waiting%' OR t.status LIKE 'awaiting%' THEN 'waiting'
-    WHEN t.source IN ('payment_task','agent_job') AND t.due_at IS NOT NULL AND
+    WHEN t.status='scheduled' THEN 'scheduled'
+    WHEN t.source IN ('payment_task','agent_job','autonomy_task') AND t.due_at IS NOT NULL AND
       (CASE WHEN length(t.due_at)=10 THEN t.due_at>${localDateSql} ELSE t.due_at>? END) THEN 'scheduled'
     ELSE 'ready' END bucket
     FROM (${selects.join(' UNION ALL ')}) t JOIN cases c ON c.id=t.case_id${ownerFilter}`;
@@ -112,6 +121,7 @@ export function agentTaskList(
   return { rows, total: counts[state], counts, offset, limit };
 }
 function nextAction(t) {
+  if (t.source === 'autonomy_task') return t.next_action || 'Execute the planned case action.';
   if (t.source === 'payment_task') {
     if (t.status === 'simulated_completed')
       return 'Completed in simulation; no real payment or delivery implied.';
