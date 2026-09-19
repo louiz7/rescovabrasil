@@ -1,5 +1,9 @@
 # Rescova Brasil — Distressed-Credit Outreach MVP
 
+## Shared operating mandate
+
+Every agent and deterministic decision role works from the same versioned organization objective: **maximize verified recovery of Rescova-owned receivables within approved rules**. Runtime context composes that mandate with the active portfolio mandate, the role charter and the current task goal. Policy, authority, evidence and contact-stop rules remain binding. Runs retain goal and version identifiers so outcomes can be traced to the exact operating context.
+
 Stand: 15. September 2026. Produktentscheidung des Auftraggebers: erster Markt Brasilien; Twilio- und OpenAI-Konten vorhanden. Arbeitsname Rescova. Aktualisierte Produktentscheidung: Bedienoberfläche auf Englisch; Nachrichten und Telefonate für Schuldner weiterhin in pt-BR. Dieses Dokument ist die überprüfbare Spezifikation des aktiven Entwicklungsziels.
 
 Aktueller Abnahmeschritt nach Nutzerentscheidung: **zuerst die lokale App prüfen; Live-Test ausdrücklich später.** Der lokale Implementierungsstand ist geliefert und getestet; reale Providerabnahme wird nicht stillschweigend als bestanden betrachtet oder automatisch ausgeführt. Siehe `VALIDATION.md`.

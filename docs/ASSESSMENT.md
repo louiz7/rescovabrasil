@@ -1,5 +1,13 @@
 # Product maturity assessment
 
+### Shared operating mandate — 19 September 2026
+
+Rescova now has one versioned recovery objective composed at runtime with portfolio mandate, role charter, task goal and current policy/channel state. Mateo's runs and every generated portfolio task retain goal, mandate and policy versions. Marina and Rafael receive the same compact context on every model turn and their primary runs retain audit versions. Clara and Lucas share the organization objective in voice policy. A read-only portfolio mandate endpoint exposes the effective contract and all role charters without debtor data.
+
+Evidence: focused tests verify compact case-safe composition, role visibility, policy hashing, voice-policy inclusion and complete audit metadata across the autonomous demo task tree. The full backend suite passed **245 tests with 14 PostgreSQL-dependent skips (259 total)**; all **26 browser tests**, production build, formatting and diff checks passed.
+
+Assessment delta: continuous strategy remains level **2** and total remains **19/48**. Shared intent and traceability reduce goal drift but add no real channel execution, payment verification or measured recovery quality. Current portfolio mandates are seeded defaults rather than operator-edited strategy contracts. Provider-backed command correlation, all Jev-run audit envelopes, mandate approval/version history, budgets and outcome-based strategy evaluation remain gaps. Next milestone stays one real two-way Twilio SMS execution loop behind the canonical command contract.
+
 Updated: 19 September 2026. Confirmed scope: exclusively purchased receivables owned by Rescova; no third-party servicing or remittance. Original lender, current owner and acquisition evidence remain separate.
 
 Target: a Brazil collections platform that continuously coordinates case work across channels, verifies payments and takes authorized next actions with agent ownership. “Fully agentic” means routine work has executable ownership and evidence-based outcomes; it does not mean a model can invent unavailable data, permissions or payment receipts.

@@ -1,5 +1,26 @@
 # Rescova workflow map
 
+## Shared operating mandate
+
+Implemented runtime composition:
+
+```mermaid
+flowchart TD
+  O[Organization mandate] --> R[Runtime context]
+  P[Portfolio mandate] --> R
+  C[Role charter] --> R
+  T[Task goal] --> R
+  Y[Current policy and portfolio channels] --> R
+  R --> M[Mateo planning]
+  R --> W[Marina and Rafael model runs]
+  R --> V[Clara and Lucas voice policy]
+  M --> A[Audited task and action]
+  W --> B[Audited model run]
+  V --> E[Tool-gated case event]
+```
+
+Mateo does not need to restate the recovery goal in each handoff. The application composes it at runtime. Uploaded documents and conversation text cannot replace it. Every autonomous run/task records `goal_id`, organization and portfolio mandate versions and current policy version. Written model runs also record role-charter version. Planned: extend the same audit envelope to provider-backed channel commands and all Jev decision records.
+
 Updated: 19 September 2026. These diagrams describe the implementation unless explicitly marked **planned**. Update this file in the same change whenever a trigger, task state, agent responsibility, or delivery mechanism changes.
 
 ## Scope and ownership

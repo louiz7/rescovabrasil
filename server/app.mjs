@@ -5,6 +5,7 @@ import { createAgentWorkflows } from './agent-workflows.mjs';
 import { createAgentRunner } from './agent-models.mjs';
 import { agentRegistry } from './agent-registry.mjs';
 import { createAutonomousPlanner } from './autonomous-planner.mjs';
+import { portfolioMandateView } from './operating-mandate.mjs';
 import {
   adoptLegacyPortfolios,
   portfolioList,
@@ -453,6 +454,11 @@ export function createApp(
   app.get('/api/portfolios/:id/autonomy', (req, res) =>
     res.json(autonomousPlanner.details(req.params.id)),
   );
+  app.get('/api/portfolios/:id/mandate', (req, res) => {
+    const mandate = portfolioMandateView(db, req.params.id);
+    assert(mandate, 'Portfolio not found.', 404);
+    res.json(mandate);
+  });
   app.post('/api/portfolios/:id/autonomy/run', async (req, res) =>
     res.json(await autonomousPlanner.runSimulation(req.params.id)),
   );

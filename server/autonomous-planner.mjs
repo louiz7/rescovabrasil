@@ -3,6 +3,11 @@ import { CASE_ACTION_VERSION, createDecisionEngine } from './decision-engine.mjs
 import { all, event, id, now, one, run } from './db.mjs';
 import { assert } from './domain.mjs';
 import { policy, suppress } from './service.mjs';
+import {
+  mandateAuditFields,
+  operatingMandate,
+  portfolioMandateView,
+} from './operating-mandate.mjs';
 
 const contactActions = new Set(['call', 'send_sms', 'send_email']);
 const ownerFor = {
@@ -47,6 +52,25 @@ export function ensureAutonomyTables(db) {
     case_id TEXT PRIMARY KEY REFERENCES cases(id),outcome TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS autonomy_schedules (
     portfolio_id TEXT PRIMARY KEY REFERENCES portfolios(id),last_planned_at TEXT,next_planned_at TEXT NOT NULL);`);
+  for (const [table, columns] of Object.entries({
+    autonomy_runs: [
+      ['goal_id', 'TEXT'],
+      ['organization_mandate_version', 'TEXT'],
+      ['portfolio_mandate_version', 'TEXT'],
+      ['policy_version', 'TEXT'],
+    ],
+    autonomy_tasks: [
+      ['goal_id', 'TEXT'],
+      ['organization_mandate_version', 'TEXT'],
+      ['portfolio_mandate_version', 'TEXT'],
+      ['role_charter_version', 'TEXT'],
+      ['policy_version', 'TEXT'],
+    ],
+  })) {
+    const existing = new Set(all(db, `PRAGMA table_info(${table})`).map((column) => column.name));
+    for (const [column, type] of columns)
+      if (!existing.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
 }
 
 export function ensureAutonomyDemoPortfolio(db) {
@@ -145,6 +169,20 @@ function caseSnapshot(db, c, operation) {
   };
 }
 
+function planningSnapshot(db, c, operation) {
+  return {
+    ...caseSnapshot(db, c, operation),
+    mandate: mandateAuditFields(
+      operatingMandate(db, {
+        portfolioId: c.portfolio_id,
+        caseId: c.id,
+        agentId: 'Mateo',
+        taskGoal: 'Choose the next permitted case action.',
+      }),
+    ),
+  };
+}
+
 function contactCandidates(snapshot) {
   const c = snapshot.case;
   return snapshot.portfolio.channels.flatMap((channel) => {
@@ -156,7 +194,7 @@ function contactCandidates(snapshot) {
 }
 
 function candidatePlan(db, c, operation, at, simulate) {
-  const snapshot = caseSnapshot(db, c, operation);
+  const snapshot = planningSnapshot(db, c, operation);
   const stateHash = hash(snapshot);
   const latest = one(
     db,
@@ -252,8 +290,9 @@ function addTask(db, values) {
   const result = run(
     db,
     `INSERT OR IGNORE INTO autonomy_tasks
-    (id,run_id,portfolio_id,case_id,parent_task_id,kind,owner,channel,status,goal,reason,due_at,state_hash,idempotency_key,decision_id,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    (id,run_id,portfolio_id,case_id,parent_task_id,kind,owner,channel,status,goal,reason,due_at,state_hash,idempotency_key,decision_id,
+     goal_id,organization_mandate_version,portfolio_mandate_version,role_charter_version,policy_version,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     taskId,
     values.runId,
     values.portfolioId,
@@ -269,6 +308,11 @@ function addTask(db, values) {
     values.stateHash,
     values.key,
     values.decisionId || null,
+    values.audit.goalId,
+    values.audit.organizationMandateVersion,
+    values.audit.portfolioMandateVersion,
+    values.audit.roleCharterVersion,
+    values.audit.policyVersion,
     stamp,
     stamp,
   );
@@ -375,12 +419,24 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
       409,
     );
     const runId = id();
+    const mandate = operatingMandate(db, {
+      portfolioId,
+      agentId: 'Mateo',
+      taskGoal: 'Select and coordinate the next permitted action for every eligible case.',
+    });
+    const runAudit = mandateAuditFields(mandate);
     run(
       db,
-      "INSERT INTO autonomy_runs (id,portfolio_id,trigger,status,created_at) VALUES (?,?,?,'running',?)",
+      `INSERT INTO autonomy_runs
+       (id,portfolio_id,trigger,status,goal_id,organization_mandate_version,portfolio_mandate_version,policy_version,created_at)
+       VALUES (?,?,?,'running',?,?,?,?,?)`,
       runId,
       portfolioId,
       trigger,
+      runAudit.goalId,
+      runAudit.organizationMandateVersion,
+      runAudit.portfolioMandateVersion,
+      runAudit.policyVersion,
       now(),
     );
     let planned = 0,
@@ -412,6 +468,14 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
         stateHash: candidate.stateHash,
         key: `plan:${c.id}:${candidate.stateHash}:${selected.action}`,
         decisionId: selected.decisionId,
+        audit: mandateAuditFields(
+          operatingMandate(db, {
+            portfolioId,
+            caseId: c.id,
+            agentId: ownerFor[selected.action],
+            taskGoal: goalFor(selected.action),
+          }),
+        ),
         status: ['await_information', 'wait_payment_verification'].includes(selected.action)
           ? 'waiting'
           : 'queued',
@@ -455,7 +519,7 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
       'SELECT * FROM portfolio_operations WHERE portfolio_id=?',
       parent.portfolio_id,
     );
-    const stateHash = hash(caseSnapshot(db, c, operation));
+    const stateHash = hash(planningSnapshot(db, c, operation));
     return addTask(db, {
       runId: parent.run_id,
       portfolioId: parent.portfolio_id,
@@ -465,6 +529,14 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
       reason,
       stateHash,
       key: `feedback:${parent.id}:${action}`,
+      audit: mandateAuditFields(
+        operatingMandate(db, {
+          portfolioId: parent.portfolio_id,
+          caseId: parent.case_id,
+          agentId: ownerFor[action],
+          taskGoal: goalFor(action),
+        }),
+      ),
       status,
       dueAt,
     });
@@ -786,6 +858,7 @@ export function createAutonomousPlanner(db, config, { evaluateDecision } = {}) {
       lastCheck;
     return {
       enabled: Boolean(config.autonomousPlannerEnabled),
+      mandate: portfolioMandateView(db, portfolioId),
       lastCheck: lastCheck
         ? {
             id: lastCheck.id,

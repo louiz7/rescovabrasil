@@ -15,6 +15,7 @@ import { createDecisionRuns } from './decision-runs.mjs';
 import { id, now, one, all, run, transaction, event, task } from './db.mjs';
 import { assert } from './domain.mjs';
 import { recordOutcome } from './service.mjs';
+import { mandateAuditFields, operatingMandate } from './operating-mandate.mjs';
 
 const resolutionStates = new Set(['awaiting_information', 'awaiting_specialist', 'blocked_policy']);
 const demoReview = 'Review demo payment agreement and prepare payment follow-up';
@@ -89,6 +90,18 @@ export function createAgentWorkflows(
   }
   if (!all(db, 'PRAGMA table_info(agent_jobs)').some((row) => row.name === 'resolved_by'))
     db.exec('ALTER TABLE agent_jobs ADD COLUMN resolved_by TEXT');
+  const modelRunColumns = new Set(
+    all(db, 'PRAGMA table_info(agent_model_runs)').map((column) => column.name),
+  );
+  for (const column of [
+    'goal_id',
+    'organization_mandate_version',
+    'portfolio_mandate_version',
+    'role_charter_version',
+    'policy_version',
+  ])
+    if (!modelRunColumns.has(column))
+      db.exec(`ALTER TABLE agent_model_runs ADD COLUMN ${column} TEXT`);
   db.exec(`CREATE TABLE IF NOT EXISTS agent_presented_offers (
     conversation_id TEXT NOT NULL, offer_id TEXT NOT NULL, offer_json TEXT NOT NULL,
     message_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(conversation_id,offer_id));`);
@@ -981,6 +994,16 @@ export function createAgentWorkflows(
     }
     const c = { ...get(job.conversation_id), delivery_channel: job.delivery_channel },
       loaded = loadContext(c, job.purpose === 'supervisor_review');
+    const activeAgent = job.purpose === 'supervisor_review' ? 'Rafael' : 'Marina';
+    const mandate = operatingMandate(db, {
+      caseId: c.case_id,
+      agentId: activeAgent,
+      taskGoal:
+        job.purpose === 'supervisor_review'
+          ? 'Resolve the current case exception within available authority.'
+          : 'Advance this debtor conversation toward an authorized resolution.',
+    });
+    const mandateAudit = mandateAuditFields(mandate);
     if (loaded.blocked) {
       stop(c, 'blocked', loaded.blocked);
       return;
@@ -1051,12 +1074,19 @@ export function createAgentWorkflows(
     run(db, "UPDATE agent_jobs SET status='running',attempts=attempts+1 WHERE id=?", job.id);
     run(
       db,
-      'INSERT INTO agent_model_runs (id,conversation_id,job_id,role,status,created_at) VALUES (?,?,?,?,?,?)',
+      `INSERT INTO agent_model_runs
+       (id,conversation_id,job_id,role,status,goal_id,organization_mandate_version,portfolio_mandate_version,role_charter_version,policy_version,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       runId,
       c.id,
       job.id,
       job.purpose === 'supervisor_review' ? 'supervisor' : 'payment_conversation_agent',
       'running',
+      mandateAudit.goalId,
+      mandateAudit.organizationMandateVersion,
+      mandateAudit.portfolioMandateVersion,
+      mandateAudit.roleCharterVersion,
+      mandateAudit.policyVersion,
       now(),
     );
     log(c.id, 'agent.started', { jobId: job.id });
@@ -1194,7 +1224,7 @@ export function createAgentWorkflows(
         for (let round = 0; ; round++) {
           const decision = await runAgent({
             ...input,
-            context: { ...input.context, lookupResults },
+            context: { ...input.context, operatingMandate: mandate, lookupResults },
           });
           lease.assertCurrent();
           if (decision.action !== 'lookup_case_information') return decision;

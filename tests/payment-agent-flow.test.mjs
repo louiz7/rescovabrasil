@@ -24,6 +24,15 @@ for (const backend of process.env.TEST_DATABASE_URL ? ['sqlite', 'postgres'] : [
     const workflow = createAgentWorkflows(db, config, {
       runAgent: async ({ context, messages, supervisor }) => {
         assert.equal(supervisor, false, 'Ordinary payment questions must not escalate.');
+        assert.equal(
+          context.operatingMandate.organization.objective,
+          'Maximize verified recovery of Rescova-owned receivables within approved rules.',
+        );
+        assert.equal(context.operatingMandate.role.agentId, 'Marina');
+        assert.equal(
+          context.operatingMandate.goalId,
+          `recovery:${context.operatingMandate.portfolio.id}`,
+        );
         if (context.purpose === 'document_followup')
           return { action: 'reply', text: 'Here is your demo agreement.' };
         const latest = messages.at(-1).content;

@@ -54,6 +54,15 @@ test('mock autonomous run plans safe work, executes specialists and never contac
     6,
   );
   assert.equal(result.latestRun.summary.providerContacts, 0);
+  assert.equal(result.latestRun.goal_id, `recovery:${f.portfolioId}`);
+  assert.equal(result.latestRun.organization_mandate_version, 'rescova-recovery-v1');
+  assert.match(result.latestRun.policy_version, /^[a-f0-9]{64}$/);
+  assert.equal(result.mandate.role.agentId, 'Mateo');
+  assert.equal(one(f.db, 'SELECT COUNT(*) n FROM autonomy_tasks WHERE goal_id IS NULL').n, 0);
+  assert.equal(
+    one(f.db, 'SELECT COUNT(*) n FROM autonomy_tasks WHERE role_charter_version IS NULL').n,
+    0,
+  );
   assert.deepEqual(
     all(
       f.db,
