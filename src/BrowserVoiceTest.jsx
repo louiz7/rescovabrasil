@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Headphones, Mic, MicOff, PhoneOff, Play, AlertCircle } from 'lucide-react';
 import './BrowserVoiceTest.css';
 import { createLiveBackend } from './live-backend.mjs';
+import { createLiveCallEnding } from './live-call-ending.mjs';
+import { liveGreetingInstructions } from '../server/voice-policy.mjs';
 
 async function request(path, method = 'GET', body) {
   const response = await fetch('/api/voice-test' + path, {
@@ -37,7 +39,7 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
   const mounted = useRef(true);
 
   function stop(message = 'Ended') {
-    generation.current += 1;
+    const stoppedGeneration = ++generation.current;
     const call = live.current;
     live.current = null;
     if (call) {
@@ -46,10 +48,30 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
       clearTimeout(call.closeTimeout);
       call.debug?.finish();
       call.backend?.close();
+      call.ending?.close();
       call.channel?.close();
       call.peer?.close();
       call.stream?.getTracks().forEach((track) => track.stop());
-      if (call.id) request('/' + call.id, 'DELETE').catch(() => {});
+      if (call.id) {
+        const savedCaseId = call.caseId;
+        request('/' + call.id, 'DELETE')
+          .then(() => {
+            if (
+              mounted.current &&
+              generation.current === stoppedGeneration &&
+              savedCaseId &&
+              call.ready &&
+              !call.failed
+            )
+              onCase?.(savedCaseId);
+          })
+          .catch(() => {
+            if (mounted.current)
+              setError(
+                'Call cleanup could not be confirmed. Open the saved case to check follow-up status.',
+              );
+          });
+      }
     }
     if (audio.current) {
       audio.current.pause();
@@ -121,11 +143,22 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
       call.channel.send(JSON.stringify(event));
       return true;
     };
+    call.ending = createLiveCallEnding({
+      onClose: () => current() && end('Ending at your request…'),
+    });
     call.backend = createLiveBackend({
       send,
       execute: (body) => request('/' + call.id + '/tool', 'POST', body),
-      onResult: ({ name, result }) => {
+      onSettled: () => call.ending.settled(),
+      onResult: ({ name, callId, result }) => {
         if (!current()) return;
+        call.debug?.log('tool.result', name, {
+          callId,
+          text: result.error ? 'Tool rejected' : 'Tool completed',
+        });
+        if (name === 'end_call' && result.endCall === true) call.ending.request();
+        const linkedCase = result.platform?.caseId || result.agreement?.platform?.caseId;
+        if (linkedCase) call.caseId = linkedCase;
         // Managed Responses delegation returns this result to Live. UI feedback
         // must not inject a second instruction that interrupts ongoing speech.
         if (name === 'confirm_identity' && result.confirmed === true) setConfirmed(true);
@@ -147,6 +180,7 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
     const fail = (message) => {
       if (!current()) return;
       setError(message);
+      call.failed = true;
       stop('Test stopped');
     };
     try {
@@ -192,7 +226,14 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
         call.debug?.log(
           event.type === 'response.event' ? event.event?.type : event.type,
           event.event?.item?.name,
+          {
+            responseId: event.event?.response_id || event.event?.response?.id,
+            callId: event.event?.item?.call_id,
+            text: event.event?.type === 'response.output_text.done' ? event.event.text : undefined,
+          },
         );
+        if (['session.output_transcript.delta', 'session.output_audio.delta'].includes(event.type))
+          call.ending.activity();
         if (event.type === 'session.closed') {
           stop('Ended · session finalized');
           return;
@@ -215,8 +256,7 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
             type: 'session.instructions.append',
             event_id: call.greetingId,
             delegation_id: null,
-            content:
-              'Conduct the entire conversation in English. Greet immediately without waiting for the caller. Introduce yourself transparently as an AI virtual assistant, then ask only one question: Am I speaking with Ana Silva? Pause and listen. Do not bundle this with a privacy or consent question. A clear yes answering this named question is sufficient self-reported name confirmation: have the backend record it with confirm_identity, without demanding that the caller repeat the full name. Do not repeat the identity question while the result is pending. Follow the startup instructions and disclose debt details only after successful confirmation.',
+            content: liveGreetingInstructions,
           });
         } else if (
           event.type === 'session.instructions.appended' &&
@@ -262,6 +302,7 @@ export default function BrowserVoiceTest({ onCase, onDebug }) {
         return;
       }
       call.id = session.id;
+      call.debug.bindSource?.(session.id);
       await peer.setRemoteDescription({ type: 'answer', sdp: session.sdp });
     } catch (e) {
       fail(

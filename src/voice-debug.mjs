@@ -104,7 +104,7 @@ export function createVoiceDebug({ provider, onStatus = () => {} }) {
     cleanups.push(() => element.removeEventListener('playing', capture));
     if (!element.paused) capture();
   }
-  function log(type, name) {
+  function log(type, name, details = {}) {
     const timestampMs = Math.round(performance.now() - started);
     if (
       ended ||
@@ -122,8 +122,19 @@ export function createVoiceDebug({ provider, onStatus = () => {} }) {
       'record_outcome',
       'agree_payment_solution',
       'get_test_context',
+      'request_case_document',
+      'end_call',
     ];
-    events.push({ type, ...(toolNames.includes(name) ? { name } : {}), timestampMs });
+    const safe = {};
+    for (const key of ['responseId', 'callId'])
+      if (typeof details[key] === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(details[key]))
+        safe[key] = details[key];
+    if (typeof details.text === 'string')
+      safe.text = details.text
+        .slice(0, 4000)
+        .replace(/\b(?:sk-|AIza)[a-zA-Z0-9_-]+/g, '[redacted]')
+        .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]');
+    events.push({ type, ...(toolNames.includes(name) ? { name } : {}), timestampMs, ...safe });
   }
   function finish() {
     if (finishPromise) return finishPromise;
@@ -176,5 +187,18 @@ export function createVoiceDebug({ provider, onStatus = () => {} }) {
       new Promise((resolve) => setTimeout(resolve, 2000)),
     ]);
   }
-  return { attach, attachElement, finish, log, captureFinished };
+  async function bindSource(sourceId) {
+    await ready;
+    if (!session) return;
+    try {
+      await jsonRequest('/' + session.id + '/source', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId }),
+      });
+    } catch (error) {
+      notify('error', 'Recording source could not be linked: ' + error.message);
+    }
+  }
+  return { attach, attachElement, finish, log, captureFinished, bindSource };
 }

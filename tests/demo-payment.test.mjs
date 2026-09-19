@@ -138,3 +138,15 @@ test('expired offers, wrong fixture, live attempts and file databases cannot acc
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('spoken money preserves exact BRL cents and never relabels unknown currencies', async () => {
+  const { spokenMoney } = await import('../server/voice-policy.mjs');
+  assert.equal(spokenMoney(41667, 'BRL'), '416 Brazilian reais and 67 centavos');
+  assert.equal(spokenMoney(41666, 'BRL'), '416 Brazilian reais and 66 centavos');
+  assert.equal(spokenMoney(101, 'BRL'), '1 Brazilian real and 1 centavo');
+  assert.equal(spokenMoney(0, 'BRL'), '0 Brazilian reais');
+  assert.equal(spokenMoney(41667, 'USD'), null);
+  assert.equal(spokenMoney('41667', 'BRL'), null);
+  assert.equal(spokenMoney(-1, 'BRL'), null);
+  assert.equal(spokenMoney(1.2, 'BRL'), null);
+});

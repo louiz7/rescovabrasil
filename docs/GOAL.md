@@ -38,16 +38,16 @@ Die zu validierende Hypothese lautet: automatisierte, respektvolle Erstansprache
 
 Alle vier beigefügten Dokumente wurden vor der Implementierung ausgewertet. Das Tech-Deck hat 53 bildbasierte Seiten und wurde mit lokalem Apple Vision OCR erschlossen; kleine Screenshot-Beschriftungen und Zahlentabellen sind OCR-unsicher. Entscheidungsrelevant sind die gut lesbaren beschreibenden Inhalte, nicht einzelne OCR-Zahlen.
 
-| Quelle | Relevante Inhalte | Konsequenz |
-|---|---|---|
-| Investment Memo, Januar 2025 | Resolve: Datenqualität, respektvolle Multichannel-Ansprache; hybride Bearbeitung; Zahlungswille und Fähigkeit als unterschiedliche Achsen | Keine pauschalen Reminder; strukturierte Diagnose mit menschlicher Übergabe |
-| Fundraising Deck, März 2025, S. 4–7 | AssetView, Resolve und Capital als separate Fähigkeiten; kundenbezogene Workflows | MVP isoliert den Outreach-Anteil von Resolve |
-| Tech & Product, S. 19–21 | Upload, Validierung, Segmentierung, Kanalwahl, Workflow, Datenrückfluss | Durchgängiger Import-zu-Ergebnis-Ablauf mit Ereignisprotokoll |
-| Tech & Product, S. 23–30 | Chat/Callbot, Kommunikationsdienst, Queue, Qualitätssicherung | Getrennte Kanaladapter und validierte Ergebnisse; kein direkter KI-Datenbankzugriff |
-| Tech & Product, S. 31–36 | Segmentfilter, CRM, Reports, Kampagnen, Authentisierung | Fallauswahl, Arbeitsliste, Kampagnensteuerung und Zugangsschutz |
-| Tech & Product, S. 12–14, 38–39 | Datenlücken; große spätere Infrastruktur | Keine untrainierten Scoring-Versprechen, kein Kubernetes für den Pilot |
-| Tech & Product, S. 40–51 | Afrikanische Finanzierungs-/Rechtsstrukturen | Nicht auf Brasilien übertragen; kein Capital-Modul |
-| Replication Blueprint, S. 4–7, 9–11 | Hybridbetrieb, Datenfeedback, Kosten und nachweisbare Pilotwirkung | Erst Erreichbarkeit und operative Wiederholbarkeit beweisen |
+| Quelle                              | Relevante Inhalte                                                                                                                         | Konsequenz                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Investment Memo, Januar 2025        | Resolve: Datenqualität, respektvolle Multichannel-Ansprache; hybride Bearbeitung; Zahlungswille und Fähigkeit als unterschiedliche Achsen | Keine pauschalen Reminder; strukturierte Diagnose mit menschlicher Übergabe         |
+| Fundraising Deck, März 2025, S. 4–7 | AssetView, Resolve und Capital als separate Fähigkeiten; kundenbezogene Workflows                                                         | MVP isoliert den Outreach-Anteil von Resolve                                        |
+| Tech & Product, S. 19–21            | Upload, Validierung, Segmentierung, Kanalwahl, Workflow, Datenrückfluss                                                                   | Durchgängiger Import-zu-Ergebnis-Ablauf mit Ereignisprotokoll                       |
+| Tech & Product, S. 23–30            | Chat/Callbot, Kommunikationsdienst, Queue, Qualitätssicherung                                                                             | Getrennte Kanaladapter und validierte Ergebnisse; kein direkter KI-Datenbankzugriff |
+| Tech & Product, S. 31–36            | Segmentfilter, CRM, Reports, Kampagnen, Authentisierung                                                                                   | Fallauswahl, Arbeitsliste, Kampagnensteuerung und Zugangsschutz                     |
+| Tech & Product, S. 12–14, 38–39     | Datenlücken; große spätere Infrastruktur                                                                                                  | Keine untrainierten Scoring-Versprechen, kein Kubernetes für den Pilot              |
+| Tech & Product, S. 40–51            | Afrikanische Finanzierungs-/Rechtsstrukturen                                                                                              | Nicht auf Brasilien übertragen; kein Capital-Modul                                  |
+| Replication Blueprint, S. 4–7, 9–11 | Hybridbetrieb, Datenfeedback, Kosten und nachweisbare Pilotwirkung                                                                        | Erst Erreichbarkeit und operative Wiederholbarkeit beweisen                         |
 
 Die BFREE-Kennzahlen sind Unternehmensangaben verschiedener Stichtage, teils intern widersprüchlich (u. a. 3/6 Mio. Personen, 42/45 Partner, Wachstum und Umsatz). Sie sind weder verifizierte Benchmarks noch Ziele dieser App. Die 72/8/6/14-Prozent-Segmente werden nicht als brasilianische Verteilung angenommen. Es werden keine fremden Schulden-, Kontakt- oder Mitarbeiterdaten aus den Unterlagen als Demodaten importiert.
 
@@ -124,6 +124,7 @@ LGPD und CDC sind relevante Grundlagen; diese technischen Kontrollen ersetzen ke
 Vor einer realen Pilotabnahme werden lokale Secrets, öffentlicher HTTPS/WSS-Endpunkt, erreichbare Twilio-Absender, passende Messaging-Berechtigungen, freigegebene Testempfänger und das freigegebene Gläubigerskript benötigt. Vorhandene Konten bedeuten nicht, dass diese Konfiguration schon vorliegt. Bis dahin sind externe Anrufe/Versand nicht praktisch verifiziert. Die Entwicklung und lokale Vertrags-/Integrationstests laufen davon unabhängig weiter.
 
 Primärquellen (am 14.09.2026 gelesen):
+
 - LGPD: https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm
 - CDC, insbesondere Art. 42 und 71: https://www.consumidor.gov.br/pages/conteudo/publico/102
 - WhatsApp: https://business.whatsapp.com/policy
@@ -140,16 +141,13 @@ Automatisierte Tests müssen relevante Risiken abdecken: defekte und wiederholte
 
 Auf ausdrücklichen Hinweis des Auftraggebers verwendet der Browser-Sprachtest jetzt GPT-Live (`gpt-live-1`) für die Gesprächsführung und einen getrennten Responses-Backend-Agenten (`gpt-5.6-terra`) für Namensbestätigung und Ergebniserfassung. Testsprache ist vorläufig Englisch. Die bislang getrennte Twilio-Telefonie bleibt GPT Realtime/pt-BR und deaktiviert. Es werden ausschließlich der feste fiktive Testfall und eine flüchtige isolierte Datenbank verwendet. GPT-Live steuert Sprache und Unterbrechungen; die App führt autorisierte Fachfunktionen aus und verwaltet Sitzung und Ergebnisse. Grundlage: https://developers.openai.com/api/docs/guides/live und die verlinkten WebRTC-/Delegations-/Migrationsleitfäden.
 
-
 ### Voice provider selection — updated 16 September 2026
 
 The Grok comparison sandbox has been retired. Keep Clara as the GPT Live voice agent, Lucas for delegated case tools, and both browser and Twilio testing. Remove Sofia from the active team; retain historical test records.
 
-
 ### Integrate accepted demo solutions with the platform
 
 Accepted voice-demo payment solutions must persist in the demo workspace as a case in a dedicated portfolio, with the accepted schedule, an operational review task and a payment follow-up job. GPT Live browser and Twilio tests share this behavior; historical Grok results remain readable. Session/agreement identity prevents duplicate records. Follow-ups initially support SMS/email with clearly nonpayable demo links and Pix placeholders; operators can edit drafts in the case detail. No real sending is included in this iteration. Later stop-contact/dispute/review outcomes must update the saved case and cancel drafts. Browser speech remains ephemeral and existing imported cases stay separate.
-
 
 ## Model-independent agent execution and first automated handoff
 
@@ -157,6 +155,19 @@ New product requirement: agent roles, task state, domain tools and conversation 
 
 The first implemented handoff is an accepted demo payment solution → observed end of source call → persistent virtual SMS agent conversation. The coordinator creates and serializes durable jobs, the lightweight text model formulates replies, and Rafael owns unresolved requests through durable supervisor jobs, guided Marina replies, document delegation and explicit dependency states. An Agents overview exposes actual implemented roles/configuration and tracked workflow jobs. This is automatic virtual delivery with real model generation, not enabled physical SMS. Existing live voice adapters remain separate. Full autonomous portfolio planning remains a later step.
 
+### Agentic target architecture refinement — 18 September 2026
+
+Rescova's target architecture follows a constrained observe-decide-act-evaluate loop. Goals, success criteria, authority, budgets and stopping conditions are durable task data rather than prompt-only instructions. The coordinator remains the durable control plane; specialized agents choose bounded next actions, while deterministic policy and capability services authorize and execute side effects. Every external action produces evidence that updates canonical case state and may trigger replanning.
+
+Agent roles stay narrow and explicit. Each role has versioned goals, available tools, authority limits and completion contracts. Agents never receive raw provider credentials or unrestricted database/API access. Atomic domain tools pass through one mediated action layer that validates current case version, contact policy, financial authority, idempotency and resource limits before writing an outbox command. High-impact outputs can require an independent validator or stronger specialist before execution without making human review the standard destination.
+
+Memory is layered: bounded working context for one run; authoritative shared case state with provenance and conflict handling; and retrieved document/history evidence with retention and relevance rules. Generated summaries and agent observations are derived memory, never silent replacements for source facts. Model reasoning, action requests, policy decisions, tool results and observed outcomes remain correlated in a queryable decision log.
+
+Routine tasks use shallow reactive decisions. Ambiguous strategy uses bounded planning with maximum steps, time, tool calls and cost. Completion, waiting, blocked capability, exhausted budget and impossible goals are explicit terminal or resumable outcomes. Under load or uncertainty, the system reduces capability, waits, requests missing information or routes to Rafael; it does not expand authority or loop indefinitely.
+
+Future decision models such as Jev may provide typed routing, scoring and confidence estimates behind a provider-neutral `DecisionEngine`. They do not replace the coordinator, policy service, ledger, task state, generative conversation agents or tool execution. New decision models enter in shadow mode, use version-pinned schemas and thresholds, and gain authority only after case-based evaluation.
+
+TypeSafe access is available as of 19 September 2026. Jev is active for fictional demo traffic as inbound triage, targeted context routing before Marina and closed-set dependency routing before Rafael. Outbound semantic verification remains planned. See [TYPESAFE_JEV_PLAN.md](TYPESAFE_JEV_PLAN.md). Jev receives no direct tool, delivery or financial authority; application policy executes permitted deterministic actions.
 
 ## Document librarian and workflow map — 15 September 2026
 
@@ -164,35 +175,29 @@ The next implemented slice is voice document request → case-scoped Helena retr
 
 [WORKFLOWS.md](WORKFLOWS.md) is the maintained workflow map. Update its Mermaid diagrams whenever an implementation change affects task triggers, ownership, delivery, or lifecycle. Diagrams distinguish current execution from planned continuous portfolio autonomy.
 
-
 ## Google Workspace email and written acceptance — 16 September 2026
 
 The demo now supports an explicitly activated real email transport using the existing Google Workspace mailbox `louiz@rescova.de` as both sender and sole test recipient. Marina owns written conversations across virtual SMS and email; the persistent coordinator and delivery adapter handle transport without adding a separate email reasoning agent. Gmail OAuth setup is required before sending; no SendGrid account or DNS changes are needed for this pilot. Mailbox polling reads only registered test threads. Real delivery is gated separately from virtual generation, and uncertain sends are never blindly retried.
 
 Written conversations can now accept a previously explained authorized offer through the shared payment agreement persistence. Application-rendered exact terms, latest-message consent, offer expiry, existing agreement authority and email-submission evidence are checked before saving. Helena can supply seeded fictional documents for email; wider external document release and inbound attachment handling are not part of this slice. See EMAIL_TEST.md and WORKFLOWS.md.
 
-
 ### Channel decisions belong to the agents
 
 An explicit caller request such as “send my loan agreement by email” must create and execute the delivery task after call end without an operator selecting Email test or pressing Send. Missing transport configuration is an explicit durable dependency; it resumes when configured. SMS and email are routes into one case context, not separate agent memories. Marina can use an offer presented by email when processing acceptance via SMS, preserving evidence and idempotent agreement storage. Individual messages and queued tasks retain their channel, so concurrent inputs cannot redirect work. The Email test screen is monitoring/troubleshooting, not a mandatory workflow step. The currently implemented SMS route is still virtual; this does not claim real Twilio SMS handling.
-
 
 ### Always-current shared case knowledge
 
 Marina must communicate from the case's complete relevant knowledge across channels, not only the last message or attachment. Each turn reloads recorded case/portfolio facts, notes, outcomes, tasks, agreements, delivery evidence and available document knowledge. Missing facts must be distinguished from omitted or unavailable context; conflicting sources need explicit resolution. The shared context service is the basis for all conversational roles. Current limits (document excerpts and transcripts not yet attached automatically) are explicit gaps to close, not intended product constraints.
 
-
 ### On-demand context refinement
 
 Always-current knowledge does not mean injecting the complete case into every model request. Conversational agents receive a small working context and invoke case-scoped lookup tools when a question requires more information. Helena owns the evolving document-retrieval capability; structured financial facts remain exact database reads. Retrieval results carry source/version/page metadata and explicit missing/conflict signals. Search/RAG can extend this interface without changing conversation or delivery logic. A knowledge graph is not an immediate requirement. Token usage and lookup latency should be measured, not assumed to improve merely because another agent is added.
-
 
 ### Scalable execution and document evidence — 16 September 2026
 
 The implemented foundation now supports PostgreSQL persistence and independent background worker processes. Agents and email delivery share expiring case ownership with fencing, preserving case ordering while independent cases run concurrently. Missing or interrupted model work can resume; uncertain external sends are held without blind retries. One API process is still required for in-memory sessions, voice and the legacy dispatcher. Concurrency controls are per process, not a claim of unlimited provider capacity.
 
 Helena now provides deterministic case-scoped full-text passage retrieval and durable PDF ingestion/OCR, with document version and page provenance. Agents retrieve relevant evidence on demand; authoritative payment records remain structured database facts. Original document storage must be shared by API and workers. Embeddings, a knowledge graph, managed object storage and horizontal API replication remain planned only when justified by operating evidence. The operational boundary and measured mocked-load benchmark are recorded in [OPERATIONS.md](OPERATIONS.md); workflow diagrams remain in [WORKFLOWS.md](WORKFLOWS.md).
-
 
 ### Agent work queue, outreach evidence and payment reconciliation — 16 September 2026
 
@@ -204,11 +209,9 @@ The target product will support receiving and reconciling payments. Payment prov
 
 After every substantial change, refresh [ASSESSMENT.md](ASSESSMENT.md), with evidence, current boundaries and the next milestone toward fully agentic collections. The phased implementation proposal is [AGENTIC_ROADMAP.md](AGENTIC_ROADMAP.md).
 
-
 #### Clarification: creditor ownership
 
 Confirmed scope: Rescova collects exclusively receivables it has purchased and owns. The current legal creditor/owner is distinct from the original lender. Incoming payments settle Rescova’s own receivables; third-party servicing and remittance are out of scope. Track acquisition/assignment provenance and keep portfolio purchase price separate from the debtor balance. Do not classify provider eligibility from the generic phrase “debt collection” alone; confirm the actual ownership and funds flow.
-
 
 ### First durable parent workflow: document fulfillment
 
@@ -217,3 +220,11 @@ New document requests now have one correlated parent ticket joining Helena retri
 ### Provider-independent payment foundation — 16 September 2026
 
 Accepted demo plans now connect to structured installments, durable request intents, versioned simulated payment events, capped allocations and agent-owned notification/reconciliation tasks. Financial mutations are deterministic and evidence-driven; conversational agents retrieve current payment state on demand across text and voice. The simulator implements the replaceable payment-provider contract; real provider activation remains explicitly gated. Simulation is distinct from real recovery. See PAYMENTS.md for current scope, the adapter boundary and end-to-end testing; WORKFLOWS.md records executed versus planned behavior.
+
+### Intended Brazil payment provider — 18 September 2026
+
+Product decision: Rescova intends to use **PagBrasil** for payment collection in Brazil through its US legal entity. The target debtor experience is one provider-hosted, expiring payment link that can offer Pix, Apple Pay, Brazilian cards and other enabled local methods. Verified PagBrasil callbacks and reconciliation responses must update the internal payment ledger and trigger agent work; agents never infer receipt from conversation text or handle payment credentials.
+
+This direction remains conditional on PagBrasil giving written underwriting approval for Rescova's exact funds flow: Rescova collects receivables it has purchased and legally owns, does not service third-party debt and does not remit collections to an originating lender. Commercial onboarding must also confirm US-entity eligibility, foreign settlement currency, FX treatment, reserves, fees, disputes, refunds and required assignment evidence. Until approval and a sandbox integration are verified, PagBrasil is the intended provider rather than an active production capability.
+
+Keep the payment domain provider-independent. PagBrasil must implement the existing adapter contract for payment requests, retrieval, authenticated event normalization and reconciliation. Internal agreements, installments, allocations, idempotency, audit events and agent tasks must not depend on PagBrasil-specific identifiers or state names. This preserves a practical fallback to another approved provider without replacing the financial ledger or agent workflows.

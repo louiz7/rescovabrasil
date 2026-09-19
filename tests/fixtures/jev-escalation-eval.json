@@ -1,0 +1,58 @@
+[
+  {
+    "id": "paid-pix-en",
+    "reason": "The participant says the Pix payment was already made. Provider evidence has not arrived yet.",
+    "route": "payment_verification",
+    "case": { "paymentReported": true }
+  },
+  {
+    "id": "paid-transfer-pt",
+    "reason": "A pessoa informou que já pagou por transferência, mas ainda não existe confirmação do provedor.",
+    "route": "payment_verification",
+    "case": { "paymentReported": true }
+  },
+  {
+    "id": "document-missing-en",
+    "reason": "The requested original loan agreement is not present in the case document store.",
+    "route": "document_wait",
+    "case": { "missingDocument": "loan_agreement" }
+  },
+  {
+    "id": "document-ambiguous-pt",
+    "reason": "Há duas versões do extrato e não existe uma versão marcada como autorizada para envio.",
+    "route": "document_wait",
+    "case": { "missingDocument": "authorized_statement_version" }
+  },
+  {
+    "id": "missing-date-en",
+    "reason": "The participant requested the original disbursement date, but that field is absent from every authoritative case source.",
+    "route": "missing_information"
+  },
+  {
+    "id": "missing-recipient-pt",
+    "reason": "A pessoa pediu o documento por email, mas o caso não possui um endereço de email válido.",
+    "route": "missing_information"
+  },
+  {
+    "id": "unauthorized-discount-en",
+    "reason": "The participant requests a 70 percent discount, but no authorized offer permits that term.",
+    "route": "policy_block",
+    "case": { "presentedOfferCount": 0 }
+  },
+  {
+    "id": "contact-restricted-pt",
+    "reason": "O canal solicitado está suprimido por uma restrição ativa de contato.",
+    "route": "policy_block",
+    "case": { "caseRestriction": "channel_suppressed" }
+  },
+  {
+    "id": "conflicting-ownership-en",
+    "reason": "Two authoritative documents identify different creditors and ownership cannot be resolved from the available evidence.",
+    "route": "supervisor_reasoning"
+  },
+  {
+    "id": "complex-dispute-pt",
+    "reason": "A pessoa contesta parte do saldo; o histórico contém alocações contraditórias e nenhuma dependência padrão resolve o conflito.",
+    "route": "supervisor_reasoning"
+  }
+]

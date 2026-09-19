@@ -297,11 +297,14 @@ function AgentDetail({ agent, data, onBack, onSelect, onCase, onConversations })
   );
 }
 const positions = {
-  openai_voice: [145, 105],
-  payment_conversation_agent: [145, 280],
-  voice_backend: [470, 195],
-  supervisor: [795, 105],
-  document_librarian: [795, 280],
+  openai_voice: [115, 105],
+  voice_backend: [115, 280],
+  inbound_triage: [350, 105],
+  context_router: [350, 280],
+  payment_conversation_agent: [585, 105],
+  resolution_router: [585, 280],
+  supervisor: [820, 105],
+  document_librarian: [820, 280],
 };
 function TeamMap({ data, onSelect }) {
   const [selected, setSelected] = useState('payment_conversation_agent');
@@ -322,8 +325,9 @@ function TeamMap({ data, onSelect }) {
       <div className="team-map-scroll">
         <div className="team-map-canvas">
           <div className="team-map-labels">
+            <span>Voice</span>
+            <span>Decision layer</span>
             <span>Conversation</span>
-            <span>Case work</span>
             <span>Specialists</span>
           </div>
           <svg viewBox="0 0 940 390" aria-hidden="true">
@@ -348,10 +352,10 @@ function TeamMap({ data, onSelect }) {
                 const direction = vertical ? Math.sign(b[1] - a[1]) : Math.sign(b[0] - a[0]);
                 const start = vertical
                   ? [a[0], a[1] + direction * 46]
-                  : [a[0] + direction * 105, a[1]];
+                  : [a[0] + direction * 90, a[1]];
                 const end = vertical
                   ? [b[0], b[1] - direction * 49]
-                  : [b[0] - direction * 108, b[1]];
+                  : [b[0] - direction * 93, b[1]];
                 return (
                   <path
                     key={i}

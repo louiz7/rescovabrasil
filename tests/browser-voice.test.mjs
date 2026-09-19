@@ -39,7 +39,10 @@ test('browser voice uses authenticated isolated synthetic context and never muta
     assert.equal(session.delegation.responses.model, 'gpt-5.6-terra');
     assert.equal(session.delegation.responses.parallel_tool_calls, false);
     assert.ok(!session.audio?.input?.turn_detection);
-    assert.ok(session.instructions.includes('BROWSER-TEST-001'));
+    assert.ok(!session.instructions.includes('BROWSER-TEST-001'));
+    assert.ok(!session.instructions.includes('125000'));
+    assert.ok(!session.instructions.includes('Banco Horizonte'));
+    assert.ok(session.instructions.length < 4500);
     assert.ok(session.instructions.includes('Ana Silva'));
     assert.match(session.instructions, /English/);
     assert.ok(!session.instructions.includes('Fale exclusivamente em português brasileiro'));
@@ -216,4 +219,58 @@ test('accepted browser demo agreement creates a durable platform case and editab
   assert.equal(updated.channel, 'sms');
   assert.equal(updated.status, 'draft');
   assert.equal(one(f.db, 'SELECT COUNT(*) n FROM attempts').n, 0);
+});
+
+test('identity returns speech-ready case facts and ending requires explicit caller request without mutating outcomes', async () => {
+  const { isolatedDatabase, executeTestTool } = await import('../server/browser-voice.mjs');
+  const db = isolatedDatabase('policy-test');
+  try {
+    const before = executeTestTool(db, 'policy-test', 'get_test_context', {});
+    assert.equal(before.case, undefined);
+    assert.equal(before.authorizedOffers, undefined);
+    for (const args of [
+      {},
+      { callerRequested: false },
+      { callerRequested: 'true' },
+      { callerRequested: true, extra: 1 },
+    ]) {
+      assert.throws(
+        () => executeTestTool(db, 'policy-test', 'end_call', args),
+        /explicit caller request/,
+      );
+    }
+    const confirmed = executeTestTool(db, 'policy-test', 'confirm_identity', {
+      name: 'Ana Silva',
+      confirmed: true,
+    });
+    assert.equal(confirmed.case.speech.amount, '1,250 Brazilian reais');
+    assert.match(confirmed.instruction, /Immediately explain the reason/);
+    assert.equal(
+      confirmed.authorizedOffers[1].installments[0].speech.amount,
+      '416 Brazilian reais and 67 centavos',
+    );
+    assert.equal(executeTestTool(db, 'policy-test', 'get_test_context', {}).confirmed, true);
+    const ending = executeTestTool(db, 'policy-test', 'end_call', { callerRequested: true });
+    assert.equal(ending.endCall, true);
+    assert.equal(one(db, 'SELECT status FROM attempts').status, 'ending');
+    assert.deepEqual(
+      executeTestTool(db, 'policy-test', 'end_call', { callerRequested: true }),
+      ending,
+    );
+    assert.equal(executeTestTool(db, 'policy-test', 'get_test_context', {}).confirmed, true);
+    for (const [name, args] of [
+      ['agree_payment_solution', { offerId: 'three_installments', accepted: true }],
+      ['record_outcome', { outcome: 'willing_to_pay' }],
+      ['request_case_document', { kind: 'loan_agreement', deliveryChannel: 'sms' }],
+      ['confirm_identity', { name: 'Ana Silva', confirmed: true }],
+    ])
+      assert.throws(() => executeTestTool(db, 'policy-test', name, args), /caller has ended/);
+    assert.equal(one(db, 'SELECT outcome FROM cases').outcome, null);
+    assert.throws(
+      () => executeTestTool(db, 'missing', 'end_call', { callerRequested: true }),
+      /not found/,
+    );
+  } finally {
+    db.close();
+  }
 });

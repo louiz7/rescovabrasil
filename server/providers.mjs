@@ -26,6 +26,21 @@ export function configuration(env = process.env) {
     agentSms: agentProfile('SMS', 'gpt-5.6-luna'),
     agentSupervisor: agentProfile('SUPERVISOR', 'gpt-5.6-terra'),
     agentTimeoutMs: 30000,
+    decisionProvider: env.DECISION_PROVIDER || 'typesafe',
+    typeSafeApiKey: env.TYPESAFE_API_KEY || '',
+    typeSafeBaseUrl: env.TYPESAFE_BASE_URL || '',
+    typeSafeModel: env.TYPESAFE_MODEL || 'jev-latest',
+    typeSafeShadowEnabled: env.TYPESAFE_SHADOW_ENABLED === 'true',
+    typeSafeDecisionMode: ['off', 'shadow', 'active'].includes(env.TYPESAFE_DECISION_MODE)
+      ? env.TYPESAFE_DECISION_MODE
+      : env.TYPESAFE_SHADOW_ENABLED === 'true'
+        ? 'shadow'
+        : 'off',
+    typeSafeActiveMinConfidence: Math.max(
+      0,
+      Math.min(1, Number(env.TYPESAFE_ACTIVE_MIN_CONFIDENCE) || 0.75),
+    ),
+    typeSafeTimeoutMs: Math.max(1000, Number(env.TYPESAFE_TIMEOUT_MS) || 10000),
     appWorkersEnabled: env.APP_WORKERS_ENABLED !== 'false',
     agentWorkerConcurrency: Math.max(1, Math.min(32, Number(env.AGENT_WORKER_CONCURRENCY) || 4)),
     emailWorkerConcurrency: Math.max(1, Math.min(16, Number(env.EMAIL_WORKER_CONCURRENCY) || 2)),

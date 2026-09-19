@@ -3428,9 +3428,21 @@ blockquote {
   }
 }
 
-.task-queue-toolbar { flex-wrap: wrap; }
-.task-queue-toolbar .segmented { flex-wrap: wrap; max-width: 100%; }
+.task-queue-toolbar {
+  flex-wrap: wrap;
+}
+.task-queue-toolbar .segmented {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
 @media (max-width: 700px) {
-  .task-queue-toolbar { flex-direction: column; align-items: stretch; gap: 12px; }
-  .task-queue-toolbar > .small-text { max-width: none; text-align: left; }
+  .task-queue-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .task-queue-toolbar > .small-text {
+    max-width: none;
+    text-align: left;
+  }
 }

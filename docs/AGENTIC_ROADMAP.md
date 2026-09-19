@@ -8,6 +8,24 @@ Build an event-driven case system with durable agent-owned tasks and a common ca
 
 The coordinator owns scheduling, deadlines, dependencies, deduplication and atomic state transitions. Rafael reasons about exceptions or material strategy changes, not every database read or incoming status callback. The application enforces authorized financial terms, contact eligibility and stale-state checks at execution time. Deterministic services are capabilities within an agentic system; a model need not decide whether two transaction IDs are identical.
 
+## Architecture alignment review — 18 September 2026
+
+The current direction already matches important production patterns: asynchronous durable work, specialized roles, explicit dependencies, provider-neutral model/tool boundaries, shared case context, evidence-based payment state, idempotency and bounded retries. Retain the modular monolith and PostgreSQL workers; no agent framework, peer-agent protocol or service split is justified yet.
+
+Changes required before wider autonomy:
+
+1. Extend canonical tasks with a machine-readable goal, completion criteria, progress state, maximum planning steps, tool-call budget, cost/time budget and stop reason. Current task type/state/deadline data is necessary but does not fully represent delegated intent.
+2. Route every consequential tool call through one action gateway. Voice and written workflows currently expose several execution paths; converge them on versioned atomic commands with the same policy, authority, freshness, idempotency and outbox checks.
+3. Complete one correlated decision log across model decision, proposed action, policy result, tool execution and observed outcome. Existing task runs, audit events and provider records are partial foundations rather than one end-to-end explanation.
+4. Separate working memory, canonical case facts and derived memory in the context contract. Add provenance, validity/expiry and conflict state so an agent summary cannot become authoritative merely because another agent consumed it.
+5. Implement a bounded observe-decide-act-evaluate planner. Existing flows are mostly predefined pipelines with exception handling; continuous portfolio work still needs explicit progress evaluation, replanning triggers and termination rules.
+6. Add risk-based independent validation for consequential messages, document release, changed payment terms and closure decisions. Deterministic validation remains preferred where rules are exact; a validator model handles semantic claims only.
+7. Enforce system-level admission, concurrency and cost budgets with graceful degradation. Individual retry limits exist, but global per-provider and per-portfolio reasoning/tool budgets remain missing.
+
+Jev is integrated behind a separate provider-neutral `DecisionEngine`, not the generative model adapter. It classifies inbound intent, selects one context source and routes routine unresolved work to defined dependency states. It batches atomic questions, persists probabilities/model/schema versions and routes low-confidence or open-ended cases to the existing model path. It never changes balances, releases documents, sends messages or executes tools. Application policy may act on evaluated high-confidence signals through existing deterministic handlers. A data-processing review remains required before using real debtor data.
+
+TypeSafe access is available. Active fictional-demo roles now cover inbound triage, context routing and unresolved-work routing before Rafael. Outbound semantic verification, voice routing, portfolio prioritization and retrieval reranking remain later evidence-driven uses. The detailed integration and activation gates are in [TYPESAFE_JEV_PLAN.md](TYPESAFE_JEV_PLAN.md).
+
 ## 1. Honest activity reporting and task visibility — current implementation slice
 
 Project existing provider records into one outreach view with daily buckets and call/SMS/email breakdowns. Preserve source IDs and avoid counting a generated email and its Gmail delivery as two messages. Browser conversations, virtual SMS and simulated portfolio attempts must remain distinguishable from provider-backed transport, even when all happen in a demo workspace.
@@ -22,14 +40,14 @@ Acceptance: all displayed totals reconcile with persisted source rows; no draft 
 
 Introduce additive tables, migrate one workflow at a time and keep existing source IDs. Do not dual-run legacy and new handlers for the same event. Start with document fulfillment and verification of a reported payment in sandbox.
 
-| Object | Essential fields and responsibility |
-| --- | --- |
-| case_events | workspace/case IDs, event ID/type/version, actor, occurred/received timestamps, source object/provider ID, correlation/causation IDs, structured evidence reference |
-| agent_tasks | ID/type/schema version, case/portfolio, accountable role, required capability, source event, parent/dependency IDs, priority, due_at, next_run_at, dedupe key, state, attempt budget, policy version, expected case version, result reference |
-| task_runs | task/run IDs, worker and fencing token, started/finished timestamps, model/profile/prompt/tool versions, input evidence IDs, result, latency, usage/cost, retry reason |
-| event_inbox | provider/account/event identity, validated payload reference, received/processed timestamps, processing state; unique provider event key |
-| command_outbox | immutable command/idempotency key, case/task reference, validated destination/content reference, policy version, dispatch state and provider result |
-| task_dependencies | dependency kind/reference, resume event, deadline, retry policy, terminal disposition |
+| Object            | Essential fields and responsibility                                                                                                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| case_events       | workspace/case IDs, event ID/type/version, actor, occurred/received timestamps, source object/provider ID, correlation/causation IDs, structured evidence reference                                                                           |
+| agent_tasks       | ID/type/schema version, case/portfolio, accountable role, required capability, source event, parent/dependency IDs, priority, due_at, next_run_at, dedupe key, state, attempt budget, policy version, expected case version, result reference |
+| task_runs         | task/run IDs, worker and fencing token, started/finished timestamps, model/profile/prompt/tool versions, input evidence IDs, result, latency, usage/cost, retry reason                                                                        |
+| event_inbox       | provider/account/event identity, validated payload reference, received/processed timestamps, processing state; unique provider event key                                                                                                      |
+| command_outbox    | immutable command/idempotency key, case/task reference, validated destination/content reference, policy version, dispatch state and provider result                                                                                           |
+| task_dependencies | dependency kind/reference, resume event, deadline, retry policy, terminal disposition                                                                                                                                                         |
 
 Use the existing PostgreSQL workers and leases. Write state changes and outbox rows in one transaction; publish after commit. No Kafka or separate orchestration framework is required for this stage. Provider duplicates and out-of-order callbacks must not repeat agreement creation, email sending or payment allocation. Aim for effectively-once local effects through uniqueness and replay-safe handlers, not an unsupported exactly-once external-delivery promise.
 
@@ -79,29 +97,29 @@ All channels need a coherent, source-backed case timeline and call summaries/tra
 
 ## Suggested handling of common situations
 
-| Trigger | Accountable role / task | Next action and completion evidence |
-| --- | --- | --- |
-| “Email my contract” during a call | Helena retrieves; Marina fulfills after call | Pin approved document version; send on requested allowed channel; preserve provider submission reference |
-| “I accept those installments” by SMS after an email offer | Marina / record agreement | Read shared offer and delivery evidence; validate latest consent and exact terms; save once; schedule confirmation and installment monitoring |
-| “I already paid” | Theo planned / verify payment; Rafael while capability absent | Immediately hold collection reminders; match provider/ledger evidence; confirm allocation or request specific missing information; never mark paid from wording alone |
-| Installment overdue | Planner; Rafael if ambiguous | Reconcile first; respect grace/wait states; then one proportionate reminder on an eligible channel |
-| Wrong phone number or opt-out | Coordinator policy update | Block applicable destination/contact scope immediately; cancel pending prohibited commands; no blind channel switching to evade stop |
-| Debtor cannot pay | Marina gathers only relevant facts; Rafael decides | Explain existing permitted options or wait state; schedule agreed revisit; never invent discounts or threats |
-| Document missing or contradictory | Helena / evidence request; Rafael / resolve conflict | Identify source gap, request data via configured connector, wait for evidence event; no repeated unsupported assertions |
-| Gmail send times out | Delivery service / reconcile uncertain send | Check stored provider identifiers/evidence; hold duplicate sends; retain explicit unresolved status if certainty cannot be established |
-| Partial payment / refund | Payment service; Theo handles exception | Post allocation/reversal once; recalculate current balance deterministically; planner evaluates appropriate next action |
-| Provider or model outage | Coordinator / retry | Bounded retries with backoff; preserve idempotency, budget and original channel; emit actionable blocked task when exhausted |
+| Trigger                                                   | Accountable role / task                                       | Next action and completion evidence                                                                                                                                   |
+| --------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| “Email my contract” during a call                         | Helena retrieves; Marina fulfills after call                  | Pin approved document version; send on requested allowed channel; preserve provider submission reference                                                              |
+| “I accept those installments” by SMS after an email offer | Marina / record agreement                                     | Read shared offer and delivery evidence; validate latest consent and exact terms; save once; schedule confirmation and installment monitoring                         |
+| “I already paid”                                          | Theo planned / verify payment; Rafael while capability absent | Immediately hold collection reminders; match provider/ledger evidence; confirm allocation or request specific missing information; never mark paid from wording alone |
+| Installment overdue                                       | Planner; Rafael if ambiguous                                  | Reconcile first; respect grace/wait states; then one proportionate reminder on an eligible channel                                                                    |
+| Wrong phone number or opt-out                             | Coordinator policy update                                     | Block applicable destination/contact scope immediately; cancel pending prohibited commands; no blind channel switching to evade stop                                  |
+| Debtor cannot pay                                         | Marina gathers only relevant facts; Rafael decides            | Explain existing permitted options or wait state; schedule agreed revisit; never invent discounts or threats                                                          |
+| Document missing or contradictory                         | Helena / evidence request; Rafael / resolve conflict          | Identify source gap, request data via configured connector, wait for evidence event; no repeated unsupported assertions                                               |
+| Gmail send times out                                      | Delivery service / reconcile uncertain send                   | Check stored provider identifiers/evidence; hold duplicate sends; retain explicit unresolved status if certainty cannot be established                                |
+| Partial payment / refund                                  | Payment service; Theo handles exception                       | Post allocation/reversal once; recalculate current balance deterministically; planner evaluates appropriate next action                                               |
+| Provider or model outage                                  | Coordinator / retry                                           | Bounded retries with backoff; preserve idempotency, budget and original channel; emit actionable blocked task when exhausted                                          |
 
 ## Milestones and indicative engineering effort
 
 Estimates are planning ranges, not delivery promises. Assume one focused developer, existing code retained, a single-tenant Brazil pilot, and no provider onboarding delays. Include implementation and automated tests, not legal/provider approval or sustained production observation.
 
-| Milestone | Incremental estimate | Exit condition |
-| --- | --- | --- |
-| M1: truthful activity and agent task visibility | Current increment | Source-backed channel view and agent queue with explicit legacy gaps |
-| M2: canonical tasks, inbox/outbox, timers and one migrated workflow | 4–7 working days | Replay/crash/dependency tests pass; no dual execution |
-| M3: provider-neutral payment sandbox and reconciliation | 5–10 working days | Ledger/payment edge-case suite and payment-to-follow-up loop pass |
-| M4: autonomous portfolio loop plus real channel integration | 7–12 working days | Full bounded pilot workflow closes from import to verified sandbox payment |
-| M5: deployment, identity/isolation, observability and evaluation gates | 10–20 working days, partly parallel | Pilot release checklist and restore/load/adversarial tests pass |
+| Milestone                                                              | Incremental estimate                | Exit condition                                                             |
+| ---------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------- |
+| M1: truthful activity and agent task visibility                        | Current increment                   | Source-backed channel view and agent queue with explicit legacy gaps       |
+| M2: canonical tasks, inbox/outbox, timers and one migrated workflow    | 4–7 working days                    | Replay/crash/dependency tests pass; no dual execution                      |
+| M3: provider-neutral payment sandbox and reconciliation                | 5–10 working days                   | Ledger/payment edge-case suite and payment-to-follow-up loop pass          |
+| M4: autonomous portfolio loop plus real channel integration            | 7–12 working days                   | Full bounded pilot workflow closes from import to verified sandbox payment |
+| M5: deployment, identity/isolation, observability and evaluation gates | 10–20 working days, partly parallel | Pilot release checklist and restore/load/adversarial tests pass            |
 
 A coherent controlled pilot is roughly 4–8 engineering weeks after this slice under those assumptions. A robust production platform requires additional field evidence and provider/operational work; a credible fixed completion date is not available yet. Re-estimate after each milestone using actual observed task complexity and failure rates.

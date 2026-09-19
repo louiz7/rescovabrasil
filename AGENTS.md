@@ -2,6 +2,14 @@
 
 Follow `/Users/louizel-hosri/.codex/RTK.md` for shell commands.
 
+## Communication mode
+
+Use the installed `caveman` skill in its default `full` mode for work in this project unless the user asks for another level or turns it off. Keep persisted code, documentation, commit messages, tickets, and third-party messages in normal prose as required by the skill.
+
+## TypeSafe development
+
+Use the project-installed `typesafe-ai` skill for work involving Jev, typed semantic decisions, routing, ranking, extraction, verification or the planned `DecisionEngine`. Follow its live-documentation requirement and keep deterministic rules, authorization and side effects in application code.
+
 ## Product direction
 
 Read the long-term product direction in [docs/GOAL.md](docs/GOAL.md). Rescova is intended to become a fully agentic platform: specialized agents handle all relevant tasks, communicate with one another, share context, coordinate work, and hand off tasks and results.

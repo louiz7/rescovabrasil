@@ -5,4 +5,7 @@ export const agentIdentities = Object.freeze({
   supervisor: { name: 'Rafael', role: 'Case supervisor' },
   openai_voice: { name: 'Clara', role: 'Voice outreach' },
   voice_backend: { name: 'Lucas', role: 'Case operations' },
+  inbound_triage: { name: 'Lia', role: 'Inbound triage' },
+  context_router: { name: 'Bento', role: 'Context router' },
+  resolution_router: { name: 'Tiago', role: 'Resolution router' },
 });

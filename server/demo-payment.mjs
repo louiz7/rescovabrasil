@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { spokenMoney } from './voice-policy.mjs';
 import { id, now, one, all, run, transaction, event } from './db.mjs';
 import { assert } from './domain.mjs';
 import { recordOutcome } from './service.mjs';
@@ -18,7 +19,7 @@ export const paymentConversationPolicy = `Payment acceptance in this pilot:
 - Keep terms already explained in conversation context. One clear acceptance of the selected, explained offer is sufficient: "yes" to the acceptance question, "I accept", "go ahead with that plan", or "yes, as I already confirmed". No special wording, second confirmation or full schedule recital is required. A clear acceptance while interrupting a repeated explanation also counts.
 - After that acceptance, call or delegate agree_payment_solution with the selected offerId and accepted:true immediately. Carry the selected offer and the caller's existing acceptance into backend delegation; backend handoff or context lookup does not reset consent. Do not ask again while waiting for the result.
 - A question, hypothetical, vague willingness or preference without agreement is not consent. If the offer is unclear or material terms were not explained, clarify only the missing point and ask one concise question. Do not restart the entire plan. Changed material terms require acceptance of the change.
-- Once agreed, acknowledge briefly and continue naturally. If context is uncertain, use get_test_context to recover the saved agreement rather than asking for consent again. Repeating acceptance of the same offer must not create another agreement.`;
+- Once agreed, acknowledge briefly without repeating the total or installment schedule unless asked, and continue naturally. If context is uncertain, use get_test_context to recover the saved agreement rather than asking for consent again. Repeating acceptance of the same offer must not create another agreement.`;
 export const paymentSolutionTool = {
   type: 'function',
   name: 'agree_payment_solution',
@@ -101,11 +102,13 @@ export function datedDemoPaymentOffers(at = new Date()) {
   const anchorDate = localDate(at);
   return demoPaymentOffers.map((offer) => ({
     ...offer,
+    speech: { total: spokenMoney(offer.totalMinor, offer.currency) },
     anchorDate,
     timezone: zone,
     expiresOn: plusDays(anchorDate, offer.expiresInDays),
     installments: offer.installments.map((part) => ({
       amountMinor: part.amountMinor,
+      speech: { amount: spokenMoney(part.amountMinor, offer.currency) },
       dueDate: plusMonths(plusDays(anchorDate, part.dueInDays), part.monthOffset),
     })),
   }));
@@ -201,6 +204,7 @@ export function executePaymentSolution(db, attemptId, args) {
       label: offer.label,
       currency: offer.currency,
       totalMinor: offer.totalMinor,
+      speech: offer.speech,
       installments: offer.installments,
       demo: true,
       acceptance: 'self_reported_explicit_consent',

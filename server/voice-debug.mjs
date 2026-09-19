@@ -28,17 +28,12 @@ const executable = (path) => {
   }
 };
 const script = fileURLToPath(new URL('../scripts/transcribe-debug.py', import.meta.url));
-export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
+export function createVoiceDebug(db, config, { spawnImpl = spawn, retryDelayMs = 5000 } = {}) {
   db.exec(`CREATE TABLE IF NOT EXISTS debug_voice_sessions (
     id TEXT PRIMARY KEY, owner TEXT NOT NULL, provider TEXT NOT NULL, source_id TEXT,
     status TEXT NOT NULL, tracks TEXT NOT NULL DEFAULT '{}', segments TEXT NOT NULL DEFAULT '[]',
     error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   );`);
-  run(
-    db,
-    "UPDATE debug_voice_sessions SET status='queued',updated_at=? WHERE status='transcribing'",
-    now(),
-  );
   run(
     db,
     "UPDATE debug_voice_sessions SET status='failed',error='Recording interrupted by server restart.',updated_at=? WHERE status='recording'",
@@ -48,6 +43,16 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
     !all(db, 'PRAGMA table_info(debug_voice_sessions)').some((column) => column.name === 'events')
   )
     db.exec("ALTER TABLE debug_voice_sessions ADD COLUMN events TEXT NOT NULL DEFAULT '[]'");
+  const columns = all(db, 'PRAGMA table_info(debug_voice_sessions)');
+  if (!columns.some((column) => column.name === 'attempts'))
+    db.exec('ALTER TABLE debug_voice_sessions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0');
+  if (!columns.some((column) => column.name === 'retry_at'))
+    db.exec('ALTER TABLE debug_voice_sessions ADD COLUMN retry_at TEXT');
+  run(
+    db,
+    "UPDATE debug_voice_sessions SET status='queued',attempts=CASE WHEN attempts>0 THEN attempts-1 ELSE 0 END,updated_at=? WHERE status='transcribing'",
+    now(),
+  );
   const root = resolve(config.voiceDebugDir || 'data/voice-debug');
   const router = express.Router(),
     timers = new Map();
@@ -86,6 +91,7 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
     sourceId: row.source_id,
     status: row.status,
     error: row.error,
+    transcriptionAttempts: row.attempts,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     speakers: Object.keys(JSON.parse(row.tracks)),
@@ -243,6 +249,8 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
           'record_outcome',
           'agree_payment_solution',
           'get_test_context',
+          'request_case_document',
+          'end_call',
         ].includes(input.name),
       'Invalid debug tool name.',
     );
@@ -252,10 +260,28 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
     );
     const events = JSON.parse(row.events || '[]');
     assert(events.length < 500, 'Debug event limit reached.', 429);
+    const details = {};
+    for (const key of ['responseId', 'callId']) {
+      assert(
+        input[key] === undefined ||
+          (typeof input[key] === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(input[key])),
+        'Invalid debug correlation ID.',
+      );
+      if (input[key]) details[key] = input[key];
+    }
+    if (input.text !== undefined) {
+      assert(typeof input.text === 'string', 'Invalid debug response text.');
+      // Only explicit response text, never arbitrary arguments/provider payloads.
+      details.text = input.text
+        .slice(0, 4000)
+        .replace(/\b(?:sk-|AIza)[a-zA-Z0-9_-]+/g, '[redacted]')
+        .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]');
+    }
     events.push({
       type: input.type,
       ...(input.name ? { name: input.name } : {}),
       timestampMs: input.timestampMs,
+      ...details,
     });
     run(
       db,
@@ -280,7 +306,8 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
     if (stopped || running || !available()) return;
     const row = one(
       db,
-      "SELECT * FROM debug_voice_sessions WHERE status='queued' ORDER BY created_at LIMIT 1",
+      "SELECT * FROM debug_voice_sessions WHERE status='queued' AND (retry_at IS NULL OR retry_at<=?) ORDER BY created_at LIMIT 1",
+      now(),
     );
     if (!row) return;
     const dir = directory(row.id),
@@ -307,6 +334,13 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
         { mode: 0o600 },
       );
       status(row.id, 'transcribing');
+      run(
+        db,
+        'UPDATE debug_voice_sessions SET attempts=attempts+1,retry_at=NULL WHERE id=?',
+        row.id,
+      );
+      // A previous failed process must never leave output that can be mistaken for this attempt.
+      rmSync(output, { force: true });
       const child = spawnImpl(config.whisperPython, [script, metadata, output], {
         shell: false,
         stdio: ['ignore', 'ignore', 'ignore'],
@@ -368,13 +402,34 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
             row.id,
           );
         } catch {
+          const diagnostics = {
+            20: 'model setup',
+            21: 'audio conversion',
+            22: 'speech recognition',
+            23: 'transcript output',
+          };
+          const diagnostic = job.timeoutExpired
+            ? 'worker timeout'
+            : diagnostics[code] || (code === 0 ? 'invalid transcript output' : 'worker exit');
+          const attempts = Number(
+            one(db, 'SELECT attempts FROM debug_voice_sessions WHERE id=?', row.id).attempts,
+          );
+          const retry =
+            !stopped &&
+            attempts < 2 &&
+            (job.timeoutExpired || (code !== 0 && ![20, 21].includes(code)));
           status(
             row.id,
-            'failed',
-            job.timeoutExpired
-              ? 'Local transcription timed out.'
-              : 'Local transcription failed. Check the installed Whisper engine, cached model and recording format.',
+            retry ? 'queued' : 'failed',
+            `Local transcription failed (${diagnostic}; attempt ${attempts}/2).${retry ? ' Retrying automatically.' : ' Audio is preserved for debugging.'}`,
           );
+          if (retry)
+            run(
+              db,
+              'UPDATE debug_voice_sessions SET retry_at=? WHERE id=?',
+              new Date(Date.now() + retryDelayMs).toISOString(),
+              row.id,
+            );
         }
         if (!stopped) queueMicrotask(pump);
       };
@@ -464,6 +519,27 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
     res.json({ ok: true });
   });
   router.post('/:id/finish', (req, res) => res.json(finish(own(req).id)));
+  router.post('/:id/source', (req, res) => {
+    const row = own(req),
+      sourceId = req.body?.sourceId;
+    assert(
+      typeof sourceId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(sourceId),
+      'Invalid source session.',
+    );
+    assert(
+      !row.source_id || row.source_id === sourceId,
+      'Recording is already bound to another source.',
+      409,
+    );
+    run(
+      db,
+      'UPDATE debug_voice_sessions SET source_id=?,updated_at=? WHERE id=?',
+      sourceId,
+      now(),
+      row.id,
+    );
+    res.json({ ok: true });
+  });
   router.get('/:id', (req, res) => res.json(summary(record(req.params.id), true)));
   router.get('/:id/audio/:speaker', (req, res) => {
     const row = record(req.params.id),
@@ -511,6 +587,11 @@ export function createVoiceDebug(db, config, { spawnImpl = spawn } = {}) {
       clearTimeout(job.timeout);
       job.child.kill('SIGKILL');
       status(job.id, 'queued');
+      run(
+        db,
+        'UPDATE debug_voice_sessions SET attempts=CASE WHEN attempts>0 THEN attempts-1 ELSE 0 END WHERE id=?',
+        job.id,
+      );
       running = null;
     }
   }

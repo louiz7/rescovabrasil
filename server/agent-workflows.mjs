@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { persistDemoAgreement } from './demo-platform.mjs';
 import { datedDemoPaymentOffers } from './demo-payment.mjs';
 import { createDocumentLibrary } from './documents.mjs';
+import { createDecisionRuns } from './decision-runs.mjs';
 import { id, now, one, all, run, transaction, event, task } from './db.mjs';
 import { assert } from './domain.mjs';
 import { recordOutcome } from './service.mjs';
@@ -24,7 +25,11 @@ const stoppedOutcomes = new Set([
   'human_review',
   'paid_reported',
 ]);
-export function createAgentWorkflows(db, config, { runAgent } = {}) {
+export function createAgentWorkflows(
+  db,
+  config,
+  { runAgent, decisionEngine, evaluateDecision, evaluateEscalationDecision } = {},
+) {
   const library = createDocumentLibrary(db, config);
   const payments = createPaymentService(db, config);
   db.exec(`CREATE TABLE IF NOT EXISTS agent_source_ends (
@@ -82,10 +87,17 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
         );
     }
   }
+  if (!all(db, 'PRAGMA table_info(agent_jobs)').some((row) => row.name === 'resolved_by'))
+    db.exec('ALTER TABLE agent_jobs ADD COLUMN resolved_by TEXT');
   db.exec(`CREATE TABLE IF NOT EXISTS agent_presented_offers (
     conversation_id TEXT NOT NULL, offer_id TEXT NOT NULL, offer_json TEXT NOT NULL,
     message_id TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(conversation_id,offer_id));`);
   ensureDocumentTickets(db);
+  const decisions = createDecisionRuns(db, config, {
+    engine: decisionEngine,
+    evaluateDecision,
+    evaluateEscalationDecision,
+  });
   const leases = createWorkerLeases(db, config);
   let closing = false,
     active = null;
@@ -125,12 +137,13 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
   }
   function resolution(c) {
     const r = one(db, 'SELECT * FROM agent_resolutions WHERE conversation_id=?', c.id);
+    const context = r ? JSON.parse(r.context_json || '{}') : {};
     return r
       ? {
           status: r.status,
           reason: r.reason,
           nextAction: r.next_action,
-          owner: 'supervisor',
+          owner: context.owner || 'supervisor',
           updatedAt: r.updated_at,
         }
       : null;
@@ -184,7 +197,13 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       now(),
       c.id,
     );
-    log(c.id, 'supervisor.' + status, { reason, nextAction, owner: 'supervisor', escalationId });
+    const owner = context.owner || 'supervisor';
+    log(c.id, `${owner === 'resolution_router' ? 'decision' : 'supervisor'}.${status}`, {
+      reason,
+      nextAction,
+      owner,
+      escalationId,
+    });
   }
   function referSupervisor(c, job, reason, extra = {}) {
     // Tool validation can reject a supervisor action too. Never create a new review of itself.
@@ -238,7 +257,13 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       "UPDATE agent_jobs SET status='cancelled',error='Superseded by case resolution' WHERE conversation_id=? AND status IN ('queued','waiting_source_end')",
       c.id,
     );
-    run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+    const owner = context.owner || 'supervisor';
+    run(
+      db,
+      "UPDATE agent_jobs SET status='completed',error=NULL,resolved_by=? WHERE id=?",
+      owner,
+      job.id,
+    );
     const nextAction =
       status === 'awaiting_information'
         ? 'Await missing case information or documents; recheck when evidence changes or the participant replies.'
@@ -270,7 +295,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       db,
       c.case_id,
       'agent_resolution_waiting',
-      { status, reason, owner: 'supervisor', nextAction },
+      { status, reason, owner, nextAction },
       'agent',
     );
   }
@@ -845,8 +870,92 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       new Intl.NumberFormat('en-GB', { style: 'currency', currency: a.currency }).format(n / 100);
     return `DEMO — agreed payment details\n${a.label}\nTotal: ${money(a.totalMinor)}\n${a.installments.map((p, i) => `${i + 1}. ${money(p.amountMinor)} due ${p.dueDate}`).join('\n')}\n${context.paymentDetails}\nDemo payment instructions are nonpayable. Consult payment_status for current simulated receipts; no real money is processed.`;
   }
+  function applyDirectTriage(c, job, triage) {
+    if (!triage?.flags) return false;
+    const reply = (body) =>
+      run(
+        db,
+        'INSERT OR IGNORE INTO agent_messages (id,conversation_id,direction,body,status,request_id,created_at,channel) VALUES (?,?,?,?,?,?,?,?)',
+        id(),
+        c.id,
+        'outbound',
+        body,
+        'simulated_delivered',
+        `job:${job.id}`,
+        now(),
+        c.delivery_channel || 'virtual_sms',
+      );
+    if (triage.flags.contact_stop >= 0.8) {
+      reply(
+        'Your request is recorded. Rescova will not send further collection messages to this contact.',
+      );
+      recordOutcome(
+        db,
+        c.case_id,
+        { outcome: 'opt_out', note: 'Jev classified an explicit contact-stop request.' },
+        'decision_engine',
+      );
+      cancelFollowups(c.case_id);
+      stop(c, 'opted_out', 'Participant requested contact stop.');
+      run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+      log(c.id, 'decision.direct_action', { role: 'inbound_triage', action: 'opt_out' });
+      return true;
+    }
+    if (triage.flags.wrong_person >= 0.8) {
+      reply('Thank you for telling us. This contact is blocked from further collection messages.');
+      recordOutcome(
+        db,
+        c.case_id,
+        { outcome: 'invalid_contact', note: 'Jev classified a wrong-person contact.' },
+        'decision_engine',
+      );
+      cancelFollowups(c.case_id);
+      stop(c, 'opted_out', 'Participant reported a wrong-person contact.');
+      run(db, "UPDATE agent_jobs SET status='completed',error=NULL WHERE id=?", job.id);
+      log(c.id, 'decision.direct_action', { role: 'inbound_triage', action: 'wrong_person' });
+      return true;
+    }
+    if (triage.flags.payment_reported >= 0.8) {
+      recordPaymentReport(db, c.case_id);
+      run(db, "UPDATE cases SET outcome='paid_reported',status='review' WHERE id=?", c.case_id);
+      cancelFollowups(c.case_id);
+      reply(
+        'Your payment report is recorded, but payment is not yet verified. Further collection is on hold pending verification.',
+      );
+      event(
+        db,
+        c.case_id,
+        'payment_reported',
+        { verified: false, owner: 'resolution_router' },
+        'decision_engine',
+      );
+      referSupervisor(c, job, 'Payment verification requires verified payment-provider evidence.', {
+        paymentReported: true,
+      });
+      log(c.id, 'decision.direct_action', {
+        role: 'inbound_triage',
+        action: 'paid_reported',
+      });
+      return true;
+    }
+    return false;
+  }
   async function processJob(job, lease) {
     lease.assertCurrent();
+    let semanticTriage = null;
+    if (job.purpose === 'reply' && decisions.activeMode) {
+      const gate = decisions.consumeInbound(job.dedupe_key.slice(6));
+      if (!gate.ready) {
+        run(
+          db,
+          "UPDATE agent_jobs SET due_at=?,error='Waiting for semantic triage' WHERE id=? AND status='queued'",
+          new Date(Date.now() + 500).toISOString(),
+          job.id,
+        );
+        return;
+      }
+      semanticTriage = gate.hint;
+    }
     const ticket = one(db, 'SELECT * FROM document_tickets WHERE job_id=?', job.id);
     if (
       ticket &&
@@ -875,6 +984,68 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
     if (loaded.blocked) {
       stop(c, 'blocked', loaded.blocked);
       return;
+    }
+    if (job.purpose === 'reply' && semanticTriage && applyDirectTriage(c, job, semanticTriage))
+      return;
+    if (job.purpose === 'supervisor_review' && decisions.activeMode) {
+      const storedResolution = one(
+        db,
+        'SELECT reason,context_json FROM agent_resolutions WHERE conversation_id=?',
+        c.id,
+      );
+      const resolutionContext = JSON.parse(storedResolution?.context_json || '{}');
+      const route = await decisions.routeEscalation({
+        jobId: job.id,
+        conversationId: c.id,
+        caseId: c.case_id,
+        reason: storedResolution?.reason || job.dedupe_key,
+        context: { ...loaded.context, ...resolutionContext },
+      });
+      log(c.id, 'decision.escalation_routed', route);
+      if (route.route === 'payment_verification') {
+        waitForResolution(
+          c,
+          job,
+          'awaiting_specialist',
+          'Payment report awaits verified provider evidence.',
+          null,
+          { ...resolutionContext, owner: 'resolution_router' },
+        );
+        return;
+      }
+      if (route.route === 'document_wait') {
+        waitForResolution(
+          c,
+          job,
+          'awaiting_information',
+          'Required document evidence is missing or ambiguous.',
+          'The document information needed to resolve this is not available yet.',
+          { ...resolutionContext, owner: 'resolution_router' },
+        );
+        return;
+      }
+      if (route.route === 'missing_information') {
+        waitForResolution(
+          c,
+          job,
+          'awaiting_information',
+          'Specific case information is required before work can continue.',
+          'More information is needed before this request can be completed.',
+          { ...resolutionContext, owner: 'resolution_router' },
+        );
+        return;
+      }
+      if (route.route === 'policy_block') {
+        waitForResolution(
+          c,
+          job,
+          'blocked_policy',
+          'The requested action is outside current authority or available capabilities.',
+          'This request cannot be completed under the currently authorized options.',
+          { ...resolutionContext, owner: 'resolution_router' },
+        );
+        return;
+      }
     }
     const runId = id();
     run(db, "UPDATE agent_jobs SET status='running',attempts=attempts+1 WHERE id=?", job.id);
@@ -998,6 +1169,27 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       const resolutionContext = savedResolution ? JSON.parse(savedResolution.context_json) : {};
       const lookupResults = [];
       const seenLookups = new Set();
+      const preloadTopic =
+        semanticTriage?.contextConfidence >= 0.75 &&
+        [
+          'case_details',
+          'payment_terms',
+          'payment_status',
+          'documents',
+          'activity',
+          'conversation_history',
+        ].includes(semanticTriage.contextRoute)
+          ? semanticTriage.contextRoute
+          : null;
+      if (preloadTopic) {
+        const query = { topic: preloadTopic, query: null, documentId: null, offset: 0 };
+        lookupResults.push({ query, result: lookupCaseInformation(db, c.case_id, query) });
+        seenLookups.add(JSON.stringify(query));
+        log(c.id, 'decision.context_preloaded', {
+          role: 'context_router',
+          topic: preloadTopic,
+        });
+      }
       const runWithLookups = async (input) => {
         for (let round = 0; ; round++) {
           const decision = await runAgent({
@@ -1096,6 +1288,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
                   olderMessagesAvailableVia: 'conversation_history',
                 },
                 purpose: job.purpose,
+                semanticTriage,
                 supervisorResolution: resolutionContext,
                 supervisorGuidance:
                   job.purpose === 'marina_guided_reply' ? resolutionContext.guidance : null,
@@ -1710,6 +1903,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
   }
   async function drain() {
     if (config.mode !== 'demo' || config.agentWorkflowsEnabled === false) return;
+    await decisions.drain();
     await payments.tick();
     // Reuse the case lease and existing executor; waiting dependencies consume no model tokens.
     for (const pending of all(
@@ -1895,6 +2089,14 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       summary: { total: counts.total, open: counts.open || 0, resolved: counts.resolved || 0 },
     });
   });
+  router.get('/decisions', (req, res) =>
+    res.json({
+      mode: decisions.mode,
+      enabled: decisions.enabled,
+      summary: decisions.stats(),
+      decisions: decisions.list(req.query.limit),
+    }),
+  );
   router.get('/:id', (req, res) => res.json(detail(req.params.id)));
   function receiveInbound(conversationId, { text, requestId, channel = 'virtual_sms' } = {}) {
     assert(['virtual_sms', 'email'].includes(channel), 'Invalid inbound channel.');
@@ -1957,6 +2159,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
         now(),
         channel,
       );
+      decisions.queueInbound({ messageId, conversationId: c.id, caseId: c.case_id });
       log(c.id, 'message.received', { messageId });
       if (
         /^(stop|unsubscribe|opt[ -]?out|do not contact me|don.t contact me|pare|cancelar)[.!\s]*$/i.test(
@@ -2063,7 +2266,9 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
   }
   function agentStats() {
     function roleStats(role, supervisor) {
-      const purpose = supervisor ? "purpose='supervisor_review'" : "purpose!='supervisor_review'";
+      const purpose = supervisor
+        ? "purpose='supervisor_review' AND COALESCE(resolved_by,'supervisor')='supervisor'"
+        : "purpose!='supervisor_review'";
       const count = (statuses) =>
         one(db, `SELECT COUNT(*) n FROM agent_jobs WHERE ${purpose} AND status IN (${statuses})`).n;
       return {
@@ -2079,6 +2284,9 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       };
     }
     return {
+      inbound_triage: decisions.statsFor('inbound_triage'),
+      context_router: decisions.statsFor('context_router'),
+      resolution_router: decisions.statsFor('resolution_router'),
       document_librarian: library.stats(),
       payment_conversation_agent: roleStats('payment_conversation_agent', false),
       supervisor: {
@@ -2119,6 +2327,7 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
     summary,
     router,
     payments,
+    decisions,
     agreementSaved,
     sourceEnded,
     outcomeChanged,
@@ -2130,12 +2339,14 @@ export function createAgentWorkflows(db, config, { runAgent } = {}) {
       running: one(db, "SELECT COUNT(*) n FROM agent_jobs WHERE status='running'").n,
       oldestQueuedAt: one(db, "SELECT MIN(created_at) at FROM agent_jobs WHERE status='queued'").at,
       concurrency: Math.max(1, Math.min(32, Number(config.agentWorkerConcurrency) || 4)),
+      decisions: decisions.stats(),
     }),
     detail,
     async closeAll() {
       closing = true;
       abortController.abort();
       if (active) await active;
+      await decisions.close();
     },
   };
 }

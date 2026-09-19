@@ -42,6 +42,25 @@ test('Live speech and transcript events never trigger manual response creation',
     h.manager.handle({ type });
   assert.deepEqual(h.sent, []);
 });
+test('completion notification waits for the non-tool backend continuation', async () => {
+  const settled = [],
+    sent = [];
+  const manager = createLiveBackend({
+    send: (event) => sent.push(event),
+    execute: async () => ({ endCall: true }),
+    onSettled: (event) => settled.push(event),
+  });
+  manager.handle(created('r1'));
+  manager.handle(tool('c1'));
+  manager.handle(done('r1'));
+  await tick();
+  assert.equal(settled.length, 0);
+  manager.handle(created('r2'));
+  manager.handle(done('r2'));
+  manager.handle(done('r2'));
+  assert.deepEqual(settled, [{ responseId: 'r2' }]);
+  manager.close();
+});
 test('backend continuation waits for all tools and completed lifecycle even when terminal output is empty', async () => {
   const pending = new Map();
   const h = harness(({ callId }) => new Promise((resolve) => pending.set(callId, resolve)));

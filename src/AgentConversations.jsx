@@ -106,6 +106,8 @@ export default function AgentConversations({ caseId, onCase, initialConversation
   const status = conversation?.status;
   const supervisorWaiting = supervisorStatuses.includes(status);
   const resolution = conversation?.resolution;
+  const resolutionOwner = resolution?.owner || 'supervisor';
+  const resolutionIdentity = agentIdentities[resolutionOwner] || agentIdentities.supervisor;
   const locked = !conversation || !['active', ...supervisorStatuses].includes(status);
   const working = (detail?.tasks || []).some((task) =>
     ['queued', 'running', 'pending', 'retrying'].includes(task.status),
@@ -226,7 +228,12 @@ export default function AgentConversations({ caseId, onCase, initialConversation
                 <section className="agent-resolution" aria-label="Case resolution">
                   <div className="agent-resolution-heading">
                     <div>
-                      <strong>{agentIdentities.supervisor.name} · Case supervisor</strong>
+                      <strong>
+                        {resolutionIdentity.name} ·{' '}
+                        {resolutionOwner === 'resolution_router'
+                          ? 'Resolution router'
+                          : 'Case supervisor'}
+                      </strong>
                       <span>{label(status)}</span>
                     </div>
                     <button
@@ -238,7 +245,10 @@ export default function AgentConversations({ caseId, onCase, initialConversation
                       <RefreshCw size={14} aria-hidden="true" /> Recheck case
                     </button>
                   </div>
-                  <p>{resolution?.reason || 'Rafael owns the next step for this case.'}</p>
+                  <p>
+                    {resolution?.reason ||
+                      `${resolutionIdentity.name} owns the next step for this case.`}
+                  </p>
                   {resolution?.nextAction && (
                     <p>
                       <strong>Next step:</strong> {resolution.nextAction}

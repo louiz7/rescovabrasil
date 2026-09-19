@@ -217,12 +217,13 @@ export function createTwilioTests(
           session.debugAudioFailed = true;
         }
       },
-      debugEvent(type, name) {
+      debugEvent(type, name, details = {}) {
         if (!session.debugId) return;
         try {
           voiceDebug.recordEvent(session.debugId, {
             type,
             name,
+            ...details,
             timestampMs: Date.now() - session.debugStarted,
           });
         } catch {}
@@ -256,6 +257,7 @@ export function createTwilioTests(
             'get_test_context',
             'agree_payment_solution',
             'request_case_document',
+            'end_call',
           ].includes(name),
           'Tool not allowed.',
         );

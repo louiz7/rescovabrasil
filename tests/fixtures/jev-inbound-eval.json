@@ -1,0 +1,119 @@
+[
+  {
+    "id": "pt-payment-options",
+    "language": "pt-BR",
+    "text": "Posso pagar esse valor em três parcelas?",
+    "intent": "payment_options"
+  },
+  {
+    "id": "en-payment-options",
+    "language": "en",
+    "text": "Can I pay this balance in monthly installments?",
+    "intent": "payment_options"
+  },
+  {
+    "id": "pt-acceptance",
+    "language": "pt-BR",
+    "text": "Sim, aceito o plano de três parcelas que vocês ofereceram.",
+    "intent": "offer_acceptance",
+    "presentedOfferCount": 1,
+    "flags": { "offer_acceptance": true }
+  },
+  {
+    "id": "en-acceptance",
+    "language": "en",
+    "text": "Yes, I accept the three-installment offer.",
+    "intent": "offer_acceptance",
+    "presentedOfferCount": 1,
+    "flags": { "offer_acceptance": true }
+  },
+  {
+    "id": "pt-paid",
+    "language": "pt-BR",
+    "text": "Eu já paguei ontem por Pix.",
+    "intent": "payment_report",
+    "flags": { "payment_reported": true }
+  },
+  {
+    "id": "en-paid",
+    "language": "en",
+    "text": "I already paid this yesterday by bank transfer.",
+    "intent": "payment_report",
+    "flags": { "payment_reported": true }
+  },
+  {
+    "id": "pt-document",
+    "language": "pt-BR",
+    "text": "Pode me enviar uma cópia do contrato?",
+    "intent": "document_request",
+    "flags": { "document_requested": true }
+  },
+  {
+    "id": "en-document",
+    "language": "en",
+    "text": "Please email me my account statement.",
+    "intent": "document_request",
+    "flags": { "document_requested": true }
+  },
+  {
+    "id": "pt-question",
+    "language": "pt-BR",
+    "text": "Qual era o banco original dessa dívida?",
+    "intent": "case_question"
+  },
+  {
+    "id": "en-question",
+    "language": "en",
+    "text": "What is the current balance and original due date?",
+    "intent": "case_question"
+  },
+  {
+    "id": "pt-dispute",
+    "language": "pt-BR",
+    "text": "Não reconheço essa dívida e contesto essa cobrança.",
+    "intent": "dispute",
+    "flags": { "debt_dispute": true }
+  },
+  {
+    "id": "en-dispute",
+    "language": "en",
+    "text": "This is my account, but the amount is incorrect and I dispute it.",
+    "intent": "dispute",
+    "flags": { "debt_dispute": true }
+  },
+  {
+    "id": "pt-wrong-person",
+    "language": "pt-BR",
+    "text": "Este número não é da Ana. Vocês falaram com a pessoa errada.",
+    "intent": "wrong_person",
+    "flags": { "wrong_person": true }
+  },
+  {
+    "id": "en-wrong-person",
+    "language": "en",
+    "text": "You have the wrong person. Nobody named Ana uses this number.",
+    "intent": "wrong_person",
+    "flags": { "wrong_person": true }
+  },
+  {
+    "id": "pt-stop",
+    "language": "pt-BR",
+    "text": "Não quero mais receber mensagens. Parem de me contatar.",
+    "intent": "contact_stop",
+    "flags": { "contact_stop": true }
+  },
+  {
+    "id": "en-stop",
+    "language": "en",
+    "text": "Do not contact me again. Remove my number.",
+    "intent": "contact_stop",
+    "flags": { "contact_stop": true }
+  },
+  { "id": "pt-other", "language": "pt-BR", "text": "Obrigado pela informação.", "intent": "other" },
+  {
+    "id": "en-other",
+    "language": "en",
+    "text": "Thanks, I will think about it.",
+    "intent": "other"
+  }
+]

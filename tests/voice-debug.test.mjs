@@ -25,7 +25,7 @@ function fixture(t, enabled = true) {
     jobs.push({ command, args, options, child });
     return child;
   };
-  const debug = createVoiceDebug(db, config, { spawnImpl });
+  const debug = createVoiceDebug(db, config, { spawnImpl, retryDelayMs: 0 });
   t.after(() => {
     debug.closeAll();
     db.close();
@@ -114,7 +114,7 @@ test('debug PCM timeline inserts correct PCMU silence and single worker persists
     'completed',
   );
   assert.equal(f.jobs.length, 2);
-  f.jobs[1].child.emit('close', 1);
+  f.jobs[1].child.emit('close', 20);
   await tick();
   assert.equal(
     one(f.db, 'SELECT status FROM debug_voice_sessions WHERE id=?', second.id).status,
@@ -155,6 +155,15 @@ test('debug HTTP upload writes only for owner, supports offsets and private read
     })
   ).json();
   const audioPath = `/${created.id}/audio?speaker=user&offsetMs=250`;
+  const sourceRequest = (sourceId, cookie = 'owner') =>
+    request(`/${created.id}/source`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ sourceId }),
+    });
+  assert.equal((await sourceRequest('browser-id', 'foreign')).status, 403);
+  assert.equal((await sourceRequest('browser-id')).status, 200);
+  assert.equal((await sourceRequest('other-id')).status, 409);
   assert.equal(
     (
       await request(audioPath, {
@@ -227,4 +236,65 @@ test('local worker shutdown preserves queued recovery and never leaks worker out
   const row = one(f.db, 'SELECT * FROM debug_voice_sessions');
   assert.equal(row.status, 'failed');
   assert.ok(!row.error.includes('private'));
+});
+
+test('transient recognition failure retries once, removes stale output and preserves bounded diagnostics', async (t) => {
+  const f = fixture(t),
+    created = f.debug.create({ owner: 'owner', provider: 'openai' });
+  f.debug.append(created.id, {
+    speaker: 'user',
+    audio: Buffer.alloc(960),
+    encoding: 'pcm16',
+    sampleRate: 24000,
+  });
+  f.debug.recordEvent(created.id, {
+    type: 'tool.backend.completed',
+    timestampMs: 20,
+    responseId: 'resp_123',
+    callId: 'call_456',
+    text: 'Bearer private-secret sk-secret ' + 'x'.repeat(5000),
+    arguments: 'discard',
+  });
+  const event = JSON.parse(one(f.db, 'SELECT events FROM debug_voice_sessions').events)[0];
+  assert.equal(event.responseId, 'resp_123');
+  assert.equal(event.callId, 'call_456');
+  assert.ok(event.text.length <= 4000);
+  assert.ok(!event.text.includes('private-secret'));
+  assert.ok(!event.text.includes('sk-secret'));
+  assert.equal(event.arguments, undefined);
+  f.debug.finish(created.id);
+  await tick();
+  writeFileSync(f.jobs[0].args[2], JSON.stringify({ segments: [] }));
+  f.jobs[0].child.emit('close', 22);
+  await tick();
+  assert.equal(f.jobs.length, 2);
+  assert.equal(existsSync(f.jobs[1].args[2]), false);
+  f.jobs[1].child.emit('close', 22);
+  await tick();
+  const row = one(f.db, 'SELECT * FROM debug_voice_sessions');
+  assert.equal(row.status, 'failed');
+  assert.equal(row.attempts, 2);
+  assert.match(row.error, /speech recognition; attempt 2\/2/);
+  assert.equal(f.jobs.length, 2);
+});
+test('second transcription attempt can complete successfully', async (t) => {
+  const f = fixture(t),
+    created = f.debug.create({ owner: 'owner', provider: 'openai' });
+  f.debug.append(created.id, {
+    speaker: 'user',
+    audio: Buffer.alloc(960),
+    encoding: 'pcm16',
+    sampleRate: 24000,
+  });
+  f.debug.finish(created.id);
+  await tick();
+  f.jobs[0].child.emit('close', 1);
+  await tick();
+  writeFileSync(f.jobs[1].args[2], JSON.stringify({ segments: [] }));
+  f.jobs[1].child.emit('close', 0);
+  await tick();
+  const row = one(f.db, 'SELECT * FROM debug_voice_sessions');
+  assert.equal(row.status, 'completed');
+  assert.equal(row.error, null);
+  assert.equal(row.attempts, 2);
 });

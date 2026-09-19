@@ -2,6 +2,8 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { validTwilio } from './providers.mjs';
 import { liveVoiceInstructions, liveBackendInstructions, liveTools } from './browser-voice.mjs';
 import { createLiveBackend } from '../src/live-backend.mjs';
+import { createLiveCallEnding } from '../src/live-call-ending.mjs';
+import { liveGreetingInstructions } from './voice-policy.mjs';
 
 const pathPattern = /^\/twilio-test-media\/([a-f0-9-]{36})\/?$/;
 export function validTestHandshake(config, path, signature) {
@@ -48,15 +50,38 @@ export function bridgeTwilioTest(
     socket.send(JSON.stringify(event));
     return true;
   };
+  let finalizeTimer;
+  const ending = createLiveCallEnding({
+    playbackPending: () => queuedBytes > 0,
+    onClose: () => {
+      if (closed) return;
+      send(openai, { type: 'session.close', event_id: 'caller_end' });
+      finalizeTimer = setTimeout(() => {
+        close();
+        void session.finish('Caller requested end; final session usage unconfirmed.');
+      }, 15000);
+      finalizeTimer.unref?.();
+    },
+  });
   const backend = createLiveBackend({
     send: (event) => send(openai, event),
     execute: ({ name, args, callId }) => session.execute(name, args, callId),
+    onSettled: () => ending.settled(),
+    onResult: ({ name, callId, result }) => {
+      session.debugEvent?.('tool.result', name, {
+        callId,
+        text: result.error ? 'Tool rejected' : 'Tool completed',
+      });
+      if (name === 'end_call' && result.endCall === true) ending.request();
+    },
     onError: (message) => session.update('in-progress', message),
   });
   const close = () => {
     if (closed) return;
     closed = true;
     clearTimeout(startTimeout);
+    clearTimeout(finalizeTimer);
+    ending.close();
     backend.close();
     input.length = 0;
     marks.clear();
@@ -135,6 +160,18 @@ export function bridgeTwilioTest(
           if (closed) return;
           try {
             const e = JSON.parse(data.toString());
+            const debugType = e.type === 'response.event' ? e.event?.type : e.type;
+            if (
+              typeof debugType === 'string' &&
+              !/transcript|\.delta$|audio_buffer\.append/.test(debugType)
+            )
+              session.debugEvent?.(debugType, e.event?.item?.name, {
+                responseId: e.event?.response_id || e.event?.response?.id,
+                callId: e.event?.item?.call_id,
+                text: e.event?.type === 'response.output_text.done' ? e.event.text : undefined,
+              });
+            if (['session.output_audio.delta', 'session.output_transcript.delta'].includes(e.type))
+              ending.activity();
             if (e.type === 'session.started') {
               if (ready) return;
               ready = true;
@@ -148,8 +185,7 @@ export function bridgeTwilioTest(
                 type: 'session.instructions.append',
                 event_id: 'phone_greeting',
                 delegation_id: null,
-                content:
-                  'Speak English. Greet now: Hello, I am Rescova, an AI virtual assistant. Am I speaking to Ana Silva, and can you speak privately? Then listen. Do not disclose any debt details before backend name confirmation.',
+                content: liveGreetingInstructions,
               });
             } else if (
               e.type === 'session.instructions.appended' &&

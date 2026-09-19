@@ -20,9 +20,11 @@
     "gmail:connect": "node --env-file-if-exists=.env scripts/gmail-connect.mjs",
     "worker": "node --experimental-sqlite --env-file-if-exists=.env server/worker.mjs",
     "migrate:postgres": "node --experimental-sqlite --env-file-if-exists=.env scripts/migrate-postgres.mjs",
-    "benchmark:workers": "node --experimental-sqlite --env-file-if-exists=.env scripts/benchmark-workers.mjs"
+    "benchmark:workers": "node --experimental-sqlite --env-file-if-exists=.env scripts/benchmark-workers.mjs",
+    "eval:jev": "node --env-file-if-exists=.env scripts/evaluate-jev.mjs"
   },
   "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0",
     "exceljs": "4.4.0",
     "express": "5.2.1",
     "lucide-react": "0.462.0",

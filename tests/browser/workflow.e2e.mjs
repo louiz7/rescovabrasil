@@ -204,11 +204,14 @@ test('Twilio phone test is blocked without configuration and opens through its d
   expect(errors).toEqual([]);
 });
 
-test('GPT-Live identity confirmation continues backend work without interrupting live audio', async ({
+test('GPT-Live preserves audio during identity tools, ends gracefully and opens the linked payment case', async ({
   page,
 }) => {
   const errors = [];
   let identityRequest;
+  let endRequest;
+  let cleanupRequest;
+  let linkedSource;
   const openaiDebugUploads = [];
   let openaiDebugFinished = false;
   page.on('pageerror', (error) => errors.push(error.message));
@@ -271,11 +274,12 @@ test('GPT-Live identity confirmation continues backend work without interrupting
   await page.route(/\/api\/voice-test(?:\/.*)?$/, async (route) => {
     const req = route.request();
     if (req.url().endsWith('/tool')) {
-      identityRequest = route;
+      if (req.postDataJSON().name === 'end_call') endRequest = route;
+      else identityRequest = route;
       return;
     }
     if (req.method() === 'DELETE') {
-      await route.fulfill({ json: { ok: true } });
+      cleanupRequest = route;
       return;
     }
     if (req.method() === 'POST') {
@@ -306,7 +310,13 @@ test('GPT-Live identity confirmation continues backend work without interrupting
       '/api/voice-debug/openai-debug-fake/audio',
       '/api/voice-debug/openai-debug-fake/events',
       '/api/voice-debug/openai-debug-fake/finish',
+      '/api/voice-debug/openai-debug-fake/source',
     ]).toContain(url.pathname);
+    if (url.pathname.endsWith('/source')) {
+      linkedSource = req.postDataJSON().sourceId;
+      await route.fulfill({ json: { ok: true } });
+      return;
+    }
     if (url.pathname.endsWith('/audio')) {
       openaiDebugUploads.push({
         speaker: url.searchParams.get('speaker'),
@@ -341,6 +351,31 @@ test('GPT-Live identity confirmation continues backend work without interrupting
     }
     await route.fulfill({ json: { enabled: true, available: true, sessions: [] } });
   });
+  await page.route('**/api/cases/browser-linked-case', (route) =>
+    route.fulfill({
+      json: {
+        id: 'browser-linked-case',
+        name: 'Ana Silva',
+        reference: 'BROWSER-LINKED-CASE',
+        portfolio_name: 'Current browser test',
+        amount_minor: 125000,
+        status: 'open',
+        timezone: 'America/Sao_Paulo',
+        identity_confirmation: 'self_reported_name',
+        attempts: [],
+      },
+    }),
+  );
+  await page.route('**/api/cases/browser-linked-case/payments', (route) =>
+    route.fulfill({
+      json: {
+        summary: { mode: 'simulation', currency: 'BRL', receivedMinor: 0 },
+        agreements: [],
+        payments: [],
+        tasks: [],
+      },
+    }),
+  );
   await login(page);
   await page.getByRole('button', { name: 'Browser voice test', exact: true }).click();
   const dialog = page.getByRole('dialog');
@@ -402,7 +437,11 @@ test('GPT-Live identity confirmation continues backend work without interrupting
   await expect(dialog.locator('audio')).toHaveJSProperty('paused', false);
   await expect(dialog.locator('.voice-test-status')).toContainText('0:01');
   await identityRequest.fulfill({
-    json: { confirmed: true, identityMethod: 'self_reported_name' },
+    json: {
+      confirmed: true,
+      identityMethod: 'self_reported_name',
+      platform: { caseId: 'browser-linked-case' },
+    },
   });
   await expect(
     dialog.getByText('Name confirmed by self-report for this test.', { exact: true }),
@@ -428,10 +467,96 @@ test('GPT-Live identity confirmation continues backend work without interrupting
   ).toEqual({ peerClosed: false, channelClosed: false, trackState: 'live' });
   await expect(dialog.locator('audio')).toHaveJSProperty('paused', false);
   await expect(dialog.locator('.voice-test-status')).toContainText('Connected');
-  expect(errors).toEqual([]);
-  await page.keyboard.press('Escape');
+  await expect.poll(() => linkedSource).toBe('fake-live-test');
+  await page.evaluate(() => {
+    const emit = (event) =>
+      window.emitVoiceEvent({
+        type: 'response.event',
+        delegation_id: 'delegation_identity',
+        event,
+      });
+    emit({ type: 'response.created', response: { id: 'response_identity_final' } });
+    emit({ type: 'response.completed', response: { id: 'response_identity_final', output: [] } });
+    emit({ type: 'response.created', response: { id: 'response_end' } });
+    emit({
+      type: 'response.output_item.done',
+      item: {
+        type: 'function_call',
+        call_id: 'call_end',
+        name: 'end_call',
+        arguments: '{"reason":"caller_requested"}',
+      },
+    });
+    emit({ type: 'response.completed', response: { id: 'response_end', output: [] } });
+  });
+  await expect.poll(() => !!endRequest).toBe(true);
+  await endRequest.fulfill({ json: { endCall: true } });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.voiceSentEvents.filter((event) => event.type === 'response.create').length,
+      ),
+    )
+    .toBe(2);
+  expect(
+    await page.evaluate(() =>
+      window.voiceSentEvents.some((event) => event.type === 'session.close'),
+    ),
+  ).toBe(false);
+  await page.evaluate(() => {
+    window.emitVoiceEvent({
+      type: 'response.event',
+      delegation_id: 'delegation_identity',
+      event: { type: 'response.created', response: { id: 'response_goodbye' } },
+    });
+    window.emitVoiceEvent({
+      type: 'response.event',
+      delegation_id: 'delegation_identity',
+      event: {
+        type: 'response.output_text.done',
+        response_id: 'response_goodbye',
+        text: 'Goodbye, Ana.',
+      },
+    });
+    window.emitVoiceEvent({
+      type: 'response.event',
+      delegation_id: 'delegation_identity',
+      event: { type: 'response.completed', response: { id: 'response_goodbye', output: [] } },
+    });
+    window.emitVoiceEvent({
+      type: 'session.output_transcript.delta',
+      delta: 'Goodbye, Ana.',
+      start_ms: 3000,
+      end_ms: 4000,
+    });
+  });
+  // Do not tear down audio as soon as the backend hands its answer back to Live.
+  expect(await page.evaluate(() => window.voicePeerClosed)).toBe(false);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => window.voiceSentEvents.filter((event) => event.type === 'session.close').length,
+        ),
+      { timeout: 7000 },
+    )
+    .toBe(1);
+  expect(await page.evaluate(() => window.voicePeerClosed)).toBe(false);
+  expect(cleanupRequest).toBeUndefined();
+  await page.evaluate(() => window.emitVoiceEvent({ type: 'session.closed' }));
+  await expect.poll(() => !!cleanupRequest).toBe(true);
   expect(await page.evaluate(() => window.voiceTestTrack.readyState)).toBe('ended');
+  // Navigation waits for source cleanup/follow-up completion, and uses this call's case.
+  await expect(
+    dialog.getByRole('heading', { name: 'Browser voice test', exact: true }),
+  ).toBeVisible();
+  await cleanupRequest.fulfill({ json: { ok: true } });
+  await expect(dialog.getByRole('heading', { name: 'Ana Silva', exact: true })).toBeVisible();
+  await expect(dialog.getByText('BROWSER-LINKED-CASE · Current browser test')).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Payments', exact: true })).toHaveClass('active');
+  await expect(dialog.getByRole('region', { name: 'Payment ledger' })).toBeVisible();
   await expect.poll(() => openaiDebugFinished).toBe(true);
+  expect(errors).toEqual([]);
   expect(openaiDebugUploads.map((upload) => upload.speaker).sort()).toEqual(['assistant', 'user']);
   expect(openaiDebugUploads.every((upload) => upload.bytes > 0)).toBe(true);
 });

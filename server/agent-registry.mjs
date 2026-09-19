@@ -6,7 +6,84 @@ export function agentRegistry(config, workflows) {
     return { provider: p?.provider || 'openai', model: p?.model || null, configured: !!p?.apiKey };
   };
   const enabled = config.mode === 'demo' && config.agentWorkflowsEnabled;
+  const decisionActive = enabled && config.typeSafeDecisionMode === 'active';
+  const decisionProfile = {
+    provider: 'typesafe',
+    model: config.typeSafeModel || 'jev-latest',
+    configured: !!config.typeSafeApiKey,
+  };
   const rows = [
+    {
+      id: 'inbound_triage',
+      kind: 'decision',
+      responsibilities: [
+        'Classify inbound intent and critical signals',
+        'Apply high-confidence stop, wrong-person and payment-report routes',
+        'Fallback to Marina when unavailable or uncertain',
+      ],
+      limitations: [
+        'No message generation',
+        'Cannot validate payment or alter financial records directly',
+        'Uses only the versioned closed-set question contract',
+      ],
+      ...agentIdentities.inbound_triage,
+      description:
+        'Sorts each inbound message before generation and resolves safe, repetitive outcomes without a large-model call.',
+      ...decisionProfile,
+      execution: decisionActive ? 'Before written replies' : 'Disabled',
+      scope: 'SMS and email intent routing',
+      capabilities: [
+        'Intent classification',
+        'Critical-signal detection',
+        'Deterministic direct-route selection',
+      ],
+    },
+    {
+      id: 'context_router',
+      kind: 'decision',
+      responsibilities: [
+        'Choose the most useful authoritative case source',
+        'Preload evidence before Marina generates a reply',
+        'Reduce repeated model lookup rounds',
+      ],
+      limitations: [
+        'Chooses only from approved read-only sources',
+        'Does not generate search claims or customer text',
+        'Marina can request another lookup when evidence is insufficient',
+      ],
+      ...agentIdentities.context_router,
+      description:
+        'Selects and preloads case, payment, document or history context before Marina answers.',
+      ...decisionProfile,
+      execution: decisionActive ? 'Before Marina generation' : 'Disabled',
+      scope: 'Read-only case context',
+      capabilities: ['Context-source selection', 'Evidence preloading', 'Lookup-round reduction'],
+    },
+    {
+      id: 'resolution_router',
+      kind: 'decision',
+      responsibilities: [
+        'Route standard escalations to explicit dependency states',
+        'Reserve Rafael for genuine open-ended reasoning',
+        'Fallback to Rafael when unavailable or uncertain',
+      ],
+      limitations: [
+        'Cannot invent capabilities or guidance',
+        'Cannot approve terms or verify payments',
+        'Only closes routing decisions, not case facts',
+      ],
+      ...agentIdentities.resolution_router,
+      description:
+        'Routes routine exceptions to payment, document, information or policy dependencies before Rafael runs.',
+      ...decisionProfile,
+      execution: decisionActive ? 'Before Rafael review' : 'Disabled',
+      scope: 'Escalation routing',
+      capabilities: [
+        'Dependency-state selection',
+        'Supervisor-call reduction',
+        'Explicit fallback routing',
+      ],
+    },
     {
       id: 'document_librarian',
       kind: 'retrieval',
@@ -169,6 +246,42 @@ export function agentRegistry(config, workflows) {
       },
     ],
     relationships: [
+      {
+        from: 'coordinator',
+        to: 'inbound_triage',
+        label: 'Classify inbound message',
+        kind: 'handoff',
+      },
+      {
+        from: 'inbound_triage',
+        to: 'context_router',
+        label: 'Share intent state',
+        kind: 'information',
+      },
+      {
+        from: 'inbound_triage',
+        to: 'payment_conversation_agent',
+        label: 'Supply applied route',
+        kind: 'handoff',
+      },
+      {
+        from: 'context_router',
+        to: 'payment_conversation_agent',
+        label: 'Supply preloaded evidence',
+        kind: 'information',
+      },
+      {
+        from: 'payment_conversation_agent',
+        to: 'resolution_router',
+        label: 'Route unresolved work',
+        kind: 'handoff',
+      },
+      {
+        from: 'resolution_router',
+        to: 'supervisor',
+        label: 'Escalate complex reasoning only',
+        kind: 'handoff',
+      },
       { from: 'openai_voice', to: 'voice_backend', label: 'Delegate case tools', kind: 'handoff' },
       {
         from: 'voice_backend',

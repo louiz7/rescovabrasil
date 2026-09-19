@@ -1,5 +1,11 @@
 // GPT-Live owns speech. This helper continues only delegated Responses tool work.
-export function createLiveBackend({ send, execute, onResult = () => {}, onError = () => {} }) {
+export function createLiveBackend({
+  send,
+  execute,
+  onResult = () => {},
+  onError = () => {},
+  onSettled = () => {},
+}) {
   const responses = new Map();
   const currentByDelegation = new Map();
   const calls = new Map();
@@ -137,6 +143,8 @@ export function createLiveBackend({ send, execute, onResult = () => {}, onError 
             'Delegated work did not complete. The voice session remains connected.',
         );
       flush();
+      if (!active.size && !continuing && !response.calls.size && !response.failed)
+        onSettled({ responseId: id });
     }
   }
   return {

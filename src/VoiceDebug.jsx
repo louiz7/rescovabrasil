@@ -173,6 +173,10 @@ export default function VoiceDebug({ initialId = '' }) {
                   <li key={index}>
                     {timestamp((event.timestampMs || 0) / 1000)} · {event.type}
                     {event.name ? ` · ${event.name}` : ''}
+                    {(event.responseId || event.callId) && (
+                      <p>{[event.responseId, event.callId].filter(Boolean).join(' · ')}</p>
+                    )}
+                    {event.text && <p>{event.text}</p>}
                   </li>
                 ))}
               </ol>

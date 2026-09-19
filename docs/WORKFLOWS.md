@@ -1,19 +1,22 @@
 # Rescova workflow map
 
-Updated: 16 September 2026. These diagrams describe the implementation unless explicitly marked **planned**. Update this file in the same change whenever a trigger, task state, agent responsibility, or delivery mechanism changes.
+Updated: 19 September 2026. These diagrams describe the implementation unless explicitly marked **planned**. Update this file in the same change whenever a trigger, task state, agent responsibility, or delivery mechanism changes.
 
 ## Scope and ownership
 
 Default delivery is **virtual SMS inside the authenticated operator app**. An agent-requested or explicitly activated **Google Workspace email test** sends fictional demo messages and seeded documents from/to `louiz@rescova.de`; physical SMS is still not enabled by these agent workflows. The workspace is single-organization; multi-tenant authorization is not implemented. Name confirmation is pilot self-report, not documentary identity verification. Do not reuse virtual-inbox authorization for releasing real documents to external recipients.
 
-| Role | Current responsibility | Implementation |
-| --- | --- | --- |
-| Clara | English GPT-Live conversation | Voice model with delegated domain tools |
-| Lucas | GPT-Live tool execution decisions | Configurable backend model |
-| Helena | Resolve a document request within one case | Deterministic retrieval specialist; no additional LLM call |
-| Marina | Compose follow-ups, answer written questions, request documents | Provider-independent structured model adapter |
-| Rafael | Own unresolved case decisions using refreshed context | Durable supervisor_review job; bounded guidance and specialist handoff |
-| Coordinator | Persist, order, schedule, cancel and retry work | Application service |
+| Role        | Current responsibility                                          | Implementation                                                         |
+| ----------- | --------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Clara       | English GPT-Live conversation                                   | Voice model with delegated domain tools                                |
+| Lucas       | GPT-Live tool execution decisions                               | Configurable backend model                                             |
+| Lia         | Classify inbound intent and critical signals                    | Jev typed decision; deterministic application actions                  |
+| Bento       | Select the first authoritative context source                   | Jev typed decision plus case-scoped deterministic lookup               |
+| Helena      | Resolve a document request within one case                      | Deterministic retrieval specialist; no additional LLM call             |
+| Marina      | Compose follow-ups, answer written questions, request documents | Provider-independent structured model adapter                          |
+| Tiago       | Route routine unresolved work to explicit dependencies          | Jev typed decision; Rafael fallback for complex reasoning              |
+| Rafael      | Own unresolved case decisions using refreshed context           | Durable supervisor_review job; bounded guidance and specialist handoff |
+| Coordinator | Persist, order, schedule, cancel and retry work                 | Application service                                                    |
 
 Helena currently supports exact document type matching, not open-ended semantic search. She returns source metadata and an immutable document version. This narrow contract can later be implemented with search/OCR/storage connectors without changing the conversation or delivery interface.
 
@@ -22,7 +25,7 @@ Helena currently supports exact document type matching, not open-ended semantic 
 ```mermaid
 sequenceDiagram
     actor Debtor
-    participant Voice as Clara or Sofia
+    participant Voice as Clara
     participant Tools as Domain tools
     participant Case as Case database
     participant Queue as Coordinator
@@ -34,6 +37,10 @@ sequenceDiagram
     Tools->>Queue: Persist agreement_followup
     Note over Case,Queue: Atomic save; one case per provider/session
     Queue-->>Queue: Wait for observed call end
+    Debtor->>Voice: Explicit request to end
+    Voice->>Tools: end_call callerRequested true
+    Tools-->>Voice: Ending; further mutations blocked
+    Note over Voice,Tools: One goodbye; bounded transport close grace
     Voice->>Queue: Source call ended
     Queue->>Marina: Agreement, payment instructions, conversation
     Marina-->>Queue: Structured reply
@@ -182,24 +189,29 @@ This existing portfolio flow is separate from isolated voice-demo fulfillment. I
 
 ```mermaid
 flowchart TD
-    Events["Incoming messages, due dates and payment events"] --> Coordinator["Durable coordinator"]
-    Coordinator --> Planner["Case planner: choose next permitted task"]
-    Planner --> Voice["Voice conversation"]
-    Planner --> Written["Written communication across SMS, email and WhatsApp"]
-    Voice --> Context["Case context service"]
-    Written --> Context
-    Planner --> Context
-    Voice --> Library["Helena document specialist"]
-    Written --> Library
-    Library --> Connectors["Approved storage connectors and evidence index"]
+    Events["Messages, timers, provider and payment events"] --> Inbox["Validated event inbox"]
+    Inbox --> Coordinator["Durable coordinator and task state"]
+    Coordinator --> Planner["Bounded case planner"]
+    Planner --> Decision["DecisionEngine: typed route and confidence"]
+    Planner --> Roles["Specialized agents: Clara, Marina, Helena, Rafael and payment role"]
+    Decision --> Planner
+    Roles --> Context["Layered context and evidence gateway"]
     Context --> Records["Authoritative case, agreement, payment and event records"]
-    Written --> Delivery["Recipient and release checks plus channel delivery adapters"]
-    Delivery --> Events
-    Planner --> Exceptions["Specialist resolution, information dependencies and policy blockers"]
-    Exceptions --> Coordinator
+    Context --> Evidence["Versioned documents, history and derived memory"]
+    Roles --> Actions["Atomic domain action requests"]
+    Actions --> Policy["Policy, authority, freshness and budget checks"]
+    Policy --> Validator["Optional independent validation for consequential actions"]
+    Validator --> Outbox["Idempotent command outbox"]
+    Outbox --> Providers["Channel, document and payment adapters"]
+    Providers --> Events
+    Policy --> Waiting["Blocked, waiting or exhausted outcome"]
+    Waiting --> Coordinator
+    Planner --> Log["Decision, action and outcome log"]
+    Policy --> Log
+    Providers --> Log
 ```
 
-Keep domain tools, task state, storage interfaces and message contracts independent of model providers. Introduce a new agent when its responsibilities and permissions differ enough to justify it. Planned steps include real two-way delivery, stronger external document-release authorization, after-call review, payment reconciliation, and continuous portfolio planning.
+Keep domain tools, task state, storage interfaces, goals and message contracts independent of model providers. Goals, success criteria, step/tool/cost budgets and stop conditions belong to durable tasks. Working context is bounded; canonical facts and evidence remain source-linked. Introduce a new agent only when its responsibilities, authority or evaluation criteria differ enough to justify it. A decision model may route work but never executes side effects directly. Planned steps include real two-way delivery, stronger external document-release authorization, after-call review, payment reconciliation, continuous portfolio planning and shadow evaluation of typed decision routing.
 
 ## Code map and acceptance
 
@@ -212,18 +224,15 @@ Keep domain tools, task state, storage interfaces and message contracts independ
 
 To test manually: start a fresh browser voice test, confirm Ana Silva, ask for the original loan agreement, wait for the saved request, and end the test. Open Demo SMS conversations, download the attachment, ask a question about it, then request the account statement. No payment acceptance is needed. Test a payment agreement in the same call to confirm both tasks share one case.
 
-
 ## Written payment-option questions
 
 For document-only Ana demo conversations, Marina receives the same approved offer catalog and dated schedules as the voice tools. Questions about installments or upfront discounts use an ordinary reply, without creating an agreement or escalating a routine question. Existing accepted agreements remain authoritative. The text agent can explain offers and record one explicit acceptance through the shared validated agreement persistence. The application appends exact dated terms and stores the presented offer; email acceptance additionally requires that offer message to have been submitted. Existing agreements cannot be amended by this action.
-
 
 ## Supervisor resolution contract
 
 Marina returns an unresolved request to Rafael rather than sending it to a human queue. Primary legacy `human_review` model decisions normalize to `escalate_supervisor`; Rafael's legacy or repeated escalation output becomes an explicit policy blocker. Supervisor jobs and guided Marina replies are separate durable executions, with provider-independent contracts and run traces.
 
 A reported payment requires authoritative verification and restricts further collection; neither Rafael nor Marina can confirm receipt or clear balances. Text agreements are available through validated acceptance of previously presented authorized offers; payment verification remains unavailable. Missing documents route through Helena and then to an explicit information request if retrieval is missing or ambiguous. Opt-outs stop contact immediately without waiting for Rafael. Supervision never authorizes new terms, bypasses document release restrictions or changes an operator/portfolio pause.
-
 
 ## Escalation tracking
 
@@ -245,7 +254,6 @@ flowchart LR
 ```
 
 Records begin with this implementation; historical human-review tasks are not falsely reclassified as Rafael consultations. Full workflow events and model runs remain accessible through the linked conversation. The API is GET /api/agent-workflows/escalations with an optional offset; it is protected by the same workspace authentication as case data.
-
 
 ## 6. Google Workspace test delivery and replies — implemented
 
@@ -317,7 +325,6 @@ flowchart TD
 
 One unambiguous contextual acceptance suffices. Questions and negated/hypothetical statements are not acceptance. The quoted consent must occur in the latest inbound text; multiple presented options require an identifiable choice. Existing agreement replays are idempotent; replacing an agreement requires an unavailable amendment capability. Acceptance is not payment receipt.
 
-
 ## 8. Agent-selected channels and shared case context — implemented
 
 ```mermaid
@@ -338,7 +345,6 @@ flowchart TD
 ```
 
 A channel is a delivery route, not a separate case or agent memory. Each durable job snapshots its response channel so a later inbound SMS cannot redirect an already queued email. Inbound provider IDs are deduplicated before changing routing. Delivered email history is usable on SMS; unsent email drafts are excluded from customer-visible history, and the acceptance gate checks the original offer's channel and submission evidence. Default replies follow the inbound channel; explicit written document delivery requests can select another channel through the model's structured action. Missing Google setup is persisted as a waiting dependency and does not become a manual send requirement. Physical SMS remains a future adapter integration for these agent workflows; the current SMS entry is the case's virtual test inbox.
-
 
 ## Shared case facts and on-demand knowledge — implemented
 
@@ -415,7 +421,6 @@ Fencing is checked inside the database transaction before model results commit, 
 
 One API process remains required because HTTP sessions, voice sessions and the legacy portfolio dispatcher are not cluster-ready. Set `APP_WORKERS_ENABLED=false` on that API when separate workers schedule background work. Standalone roles are `all`, `agent`, `email` and `ingestion`; email synchronization currently also ticks the agent queue. These limits and migration/monitoring procedures are documented in [OPERATIONS.md](OPERATIONS.md). Horizontal API replication, provider-wide distributed rate limiting and production throughput guarantees remain planned.
 
-
 ## Outreach evidence and agent task oversight — implemented read projections
 
 The Overview activity panel reads persisted Twilio test calls, Gmail delivery records, virtual SMS messages and legacy contact attempts. It groups the latest fourteen calendar days in America/Sao_Paulo by Calling, SMS and Email. The summary UI uses a stacked chart and a compact color legend, plus aggregate external/simulated counts; detailed channel status lists remain outside this summary. Provider-backed transport and simulated activity remain distinguishable. Mirrored provider IDs are deduplicated. Browser debug sessions are separate; unrecorded browser history cannot be reconstructed. Gmail submission is not delivery/read evidence, and Twilio completion is not right-party confirmation.
@@ -464,6 +469,28 @@ flowchart TD
 
 Financial postings, partial allocations and reversals are deterministic and auditable. An agent can own verification without deciding monetary truth from generated text. Full roadmap, scenario handling and acceptance gates: [AGENTIC_ROADMAP.md](AGENTIC_ROADMAP.md). Current maturity and remaining gaps: [ASSESSMENT.md](ASSESSMENT.md).
 
+## Active typed decision layer — implemented, 19 September 2026
+
+Lia, Bento and Tiago are TypeSafe/Jev decision roles behind the provider-neutral `DecisionEngine`. They return typed probabilities and routes; application code retains authorization, mutations and delivery. Decision runs are durable, idempotent and correlated to the source message or job. Low-confidence, failed or unavailable decisions follow the existing model path.
+
+```mermaid
+flowchart LR
+    Inbound["Persisted SMS or email"] --> Lia["Lia: intent and critical signals"]
+    Lia -->|"contact stop or wrong person"| Direct["Deterministic acknowledgement and suppression"]
+    Lia -->|"payment reported"| Hold["Record unverified report and hold collection"]
+    Lia --> Bento["Bento: select authoritative context source"]
+    Bento --> Context["Case-scoped deterministic lookup"]
+    Context --> Marina["Marina: generate channel response"]
+    Marina -->|"defined unresolved dependency"| Tiago["Tiago: closed-set resolution route"]
+    Hold --> Tiago
+    Tiago --> Payment["Await payment-provider evidence"]
+    Tiago --> Document["Await document evidence"]
+    Tiago --> Information["Await missing information"]
+    Tiago --> Policy["Keep policy block"]
+    Tiago -->|"complex or low confidence"| Rafael["Rafael: open-ended case reasoning"]
+```
+
+One live local demo exercised both savings paths. A creditor question caused Bento to preload `case_details`; Marina answered with one model generation and no iterative lookup generation. A subsequent Pix payment report was acknowledged by Lia without Marina, then Tiago selected payment verification without a Rafael model run. The UI shows Tiago as the waiting-resolution owner. No payment was marked received because provider evidence is absent.
 
 ## Durable document fulfillment ticket — implemented, 16 September 2026
 
@@ -501,7 +528,6 @@ A parent email ticket completes only with its correlated message, pinned documen
 Real email release still permits only seeded fictional documents. User-uploaded PDFs can support retrieval and virtual-SMS fulfillment but do not automatically gain external release authorization. Contact eligibility and pause rules apply immediately before sending. No new live calls or email tests were initiated during automated validation.
 
 Test instructions: [DOCUMENT_TICKET_TEST.md](DOCUMENT_TICKET_TEST.md). The general task/inbox/outbox platform and payment reconciliation in the preceding planned diagram remain future work; this slice implements one bounded document contract.
-
 
 ## Payment confirmation and supervisor loop protection (16 September 2026)
 
@@ -554,7 +580,16 @@ Payment events, accounting projections and notification tasks commit atomically 
 
 **Planned, not enabled:** actual payment-provider adapter, signed public webhook endpoint, periodic provider reconciliation, real payment notification delivery, recurring portfolio collection cadence and a universal outbox/timer executor. See [PAYMENTS.md](PAYMENTS.md) for the adapter contract, edge cases and test steps.
 
-
 ### Voice provider simplification — 16 September 2026
 
 Clara remains the GPT Live voice agent with Lucas handling delegated case tools. Sofia and the Grok browser test have been removed from the active registry, UI, API and WebSocket runtime. Browser GPT Live and Twilio workflows continue unchanged. Historical Grok cases, agreements and debug recordings remain readable; they are not active voice endpoints.
+
+## Voice reliability — 17 September 2026
+
+Browser and Twilio tests share a compact Clara conversation policy and the same greeting. A direct answer to the named identity question is delegated immediately; financial facts are absent from Clara's initial prompt and returned after the backend records self-report. The result supplies the reason for calling and a next-question instruction. This progression is model-driven and requires recorded-call evaluation; it is not a deterministic guarantee of speech timing.
+
+Financial tools retain integer BRL values and additionally return speech amounts explicitly named Brazilian reais/centavos. The backend preserves those values in its concise response. Agreements are acknowledged briefly without re-reading their schedule. Currency pronunciation and brevity remain measured voice acceptance criteria, not inferred from a unit-test pass.
+
+The `end_call` command requires `callerRequested:true`, transitions the isolated attempt to `ending`, and blocks further mutations. It is allowed before name confirmation. The model must record opt-out first when requested. Each transport waits for backend continuation to settle and allows 3.5 seconds of output inactivity for a short goodbye, with a 15-second bound if work/output stalls. Twilio additionally checks queued playback acknowledgments. WebRTC inactivity is a grace period, not exact playback-completion evidence. The transport requests `session.close`, awaits `session.closed`, and falls back after 15 seconds with final usage unconfirmed. Existing source-end handling releases follow-ups. The browser opens the exact linked case's Payments tab after successful server cleanup, without searching by debtor name. An error or an abandoned component does not auto-navigate.
+
+Debug recordings bind to the browser session ID. Opt-in debug events include bounded backend response text and response/tool IDs, without raw tool arguments. Local Whisper retries transient failures once with a five-second delay; setup, conversion and malformed-output errors remain visible with stage-specific diagnostics. Local Whisper is still a serial, bounded five-minute / ten-queued-session debug facility. Distributed transcription, durable production call ownership, provider-wide concurrency limits and thousands-of-calls operation remain planned. See [VOICE_VALIDATION.md](VOICE_VALIDATION.md).

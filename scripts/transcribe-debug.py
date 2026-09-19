@@ -7,9 +7,11 @@ from pathlib import Path
 
 os.environ['HF_HUB_OFFLINE'] = '1'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
+stage = 20
 
 
 def main():
+    global stage
     metadata_path = Path(sys.argv[1]).resolve()
     output_path = Path(sys.argv[2]).resolve()
     directory = metadata_path.parent
@@ -42,6 +44,7 @@ def main():
             engine = 'whisper'
     segments = []
     for speaker, track in metadata['tracks'].items():
+        stage = 21
         if speaker not in ('user', 'assistant'):
             raise ValueError('Unknown speaker')
         source = (directory / track['file']).resolve()
@@ -58,6 +61,7 @@ def main():
         command += ['-i', str(source), '-t', str(max(0, 300 - offset)), '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', str(wav)]
         subprocess.run(command, check=True, timeout=60, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         os.chmod(wav, 0o600)
+        stage = 22
         if engine == 'mlx':
             parts = mlx_whisper.transcribe(str(wav), path_or_hf_repo=str(model_path), verbose=False, word_timestamps=False)['segments']
         elif engine == 'faster_whisper':
@@ -69,6 +73,7 @@ def main():
             start, end = float(part['start']) + offset, float(part['end']) + offset
             segments.append({'speaker': speaker, 'start': min(300, start), 'end': min(300, end), 'text': str(part['text']).strip()})
     segments.sort(key=lambda part: (part['start'], part['speaker']))
+    stage = 23
     output_path.write_text(json.dumps({'segments': segments}, ensure_ascii=False))
     os.chmod(output_path, 0o600)
 
@@ -78,4 +83,4 @@ if __name__ == '__main__':
         main()
     except Exception:
         # The API reports a bounded diagnostic; never print audio text or raw provider data.
-        sys.exit(1)
+        sys.exit(stage)

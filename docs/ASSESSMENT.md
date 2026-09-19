@@ -1,6 +1,6 @@
 # Product maturity assessment
 
-Updated: 16 September 2026. Confirmed scope: exclusively purchased receivables owned by Rescova; no third-party servicing or remittance. Original lender, current owner and acquisition evidence remain separate.
+Updated: 19 September 2026. Confirmed scope: exclusively purchased receivables owned by Rescova; no third-party servicing or remittance. Original lender, current owner and acquisition evidence remain separate.
 
 Target: a Brazil collections platform that continuously coordinates case work across channels, verifies payments and takes authorized next actions with agent ownership. “Fully agentic” means routine work has executable ownership and evidence-based outcomes; it does not mean a model can invent unavailable data, permissions or payment receipts.
 
@@ -12,20 +12,20 @@ This is a maturity rubric, not a percentage of code completed. As an engineering
 
 ## Current baseline
 
-| Capability | Level | Existing evidence | Missing to reach the next material milestone |
-| --- | --- | --- | --- |
-| Case/portfolio data and imports | 2 | CSV/XLSX validation, portfolio views and PostgreSQL persistence tested | Real lender datasets, versioned creditor policy and durable external identity mapping |
-| Shared case knowledge | 2 | Cross-channel lookup, case-scoped versioned PDF/OCR/full-text retrieval; user confirmed reference retrieval and correct unknown-date answer | Unified call evidence, conflicting-source resolution tests, retrieval evaluation corpus |
-| Voice | 2 | Browser demos and Twilio test integration with payment/document tools | General portfolio cases, durable linked call lifecycle/transcripts, production callback and reconnect coverage |
-| SMS | 1 | Virtual SMS uses Marina and persists shared case history/acceptance | Real inbound/outbound/status adapter and live-pilot routing/eligibility |
-| Email | 2 | Google Workspace fixed-mailbox test and replies work; shared offer acceptance tests | General debtor routing, delivery/bounce evidence, mailbox operating limits and pilot observation |
-| Agent work execution | 2 | Durable jobs, case leases, fencing, recovery, supervisor dependencies and ingestion workers tested | Unified typed task commands, inbox/outbox, dependency deadlines and migration of legacy tasks |
-| Continuous portfolio strategy | 1 | Portfolio activation and legacy dispatch exist; Rafael resolves conversation exceptions | Unified daily/due-case planning, contact budget, agreement timers and evidence-based replanning |
-| Payments and reconciliation | 2 | Integrated simulator: immutable schedules, request intents, versioned event inbox, capped allocations, partial payments, refunds/reversals, notifications and balance lookup tested on SQLite/PostgreSQL | Activated provider adapter, authenticated public webhook, scheduled external reconciliation, settlement/expiry rules and live evidence |
-| Policy and action authority | 1 | Contact stops, consent/offer validation and case checks in existing flows | One policy service spanning all commands and provider adapters; creditor configuration and wider scenario validation |
-| Runtime and observability | 1 | PostgreSQL, independent workers, worker health and mocked concurrency benchmark | Async SQL path as needed, global quotas, distributed sessions, durable voice recovery, managed storage and tested restore |
-| Evaluation and economics | 1 | Automated regression tests, model usage traces and some live user testing | Representative scenario benchmarks, groundedness/action metrics, cost budgets and confirmed recovery outcomes |
-| Access and security | 1 | Single-workspace operator login and case-scoped tools | Role-based access, audit access, data lifecycle controls and deployment hardening; multi-tenancy only if future scope requires it |
+| Capability                      | Level | Existing evidence                                                                                                                                                                                        | Missing to reach the next material milestone                                                                                           |
+| ------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Case/portfolio data and imports | 2     | CSV/XLSX validation, portfolio views and PostgreSQL persistence tested                                                                                                                                   | Real lender datasets, versioned creditor policy and durable external identity mapping                                                  |
+| Shared case knowledge           | 2     | Cross-channel lookup, case-scoped versioned PDF/OCR/full-text retrieval; user confirmed reference retrieval and correct unknown-date answer                                                              | Unified call evidence, conflicting-source resolution tests, retrieval evaluation corpus                                                |
+| Voice                           | 2     | Browser demos and Twilio test integration with payment/document tools                                                                                                                                    | General portfolio cases, durable linked call lifecycle/transcripts, production callback and reconnect coverage                         |
+| SMS                             | 1     | Virtual SMS uses Marina and persists shared case history/acceptance                                                                                                                                      | Real inbound/outbound/status adapter and live-pilot routing/eligibility                                                                |
+| Email                           | 2     | Google Workspace fixed-mailbox test and replies work; shared offer acceptance tests                                                                                                                      | General debtor routing, delivery/bounce evidence, mailbox operating limits and pilot observation                                       |
+| Agent work execution            | 2     | Durable jobs, case leases, fencing, recovery, supervisor dependencies and ingestion workers tested                                                                                                       | Unified typed task commands, inbox/outbox, dependency deadlines and migration of legacy tasks                                          |
+| Continuous portfolio strategy   | 1     | Portfolio activation and legacy dispatch exist; Rafael resolves conversation exceptions                                                                                                                  | Unified daily/due-case planning, contact budget, agreement timers and evidence-based replanning                                        |
+| Payments and reconciliation     | 2     | Integrated simulator: immutable schedules, request intents, versioned event inbox, capped allocations, partial payments, refunds/reversals, notifications and balance lookup tested on SQLite/PostgreSQL | Activated provider adapter, authenticated public webhook, scheduled external reconciliation, settlement/expiry rules and live evidence |
+| Policy and action authority     | 1     | Contact stops, consent/offer validation and case checks in existing flows                                                                                                                                | One policy service spanning all commands and provider adapters; creditor configuration and wider scenario validation                   |
+| Runtime and observability       | 1     | PostgreSQL, independent workers, worker health and mocked concurrency benchmark                                                                                                                          | Async SQL path as needed, global quotas, distributed sessions, durable voice recovery, managed storage and tested restore              |
+| Evaluation and economics        | 1     | Automated regression tests, model usage traces and some live user testing                                                                                                                                | Representative scenario benchmarks, groundedness/action metrics, cost budgets and confirmed recovery outcomes                          |
+| Access and security             | 1     | Single-workspace operator login and case-scoped tools                                                                                                                                                    | Role-based access, audit access, data lifecycle controls and deployment hardening; multi-tenancy only if future scope requires it      |
 
 The rubric totals **18/48**. This number is a progress signal across these twelve dimensions, not proof that 38% of the final engineering work is finished. It can go down when a previously assumed capability fails representative testing.
 
@@ -49,7 +49,6 @@ The next delivery target is **M2: a canonical task/outbox/timer layer with one m
 
 Append a dated entry with: scope; previously missing behavior now executable; exact tests/live evidence; unresolved failure modes and dependencies; changes to the matrix; next milestone and revised estimate. Mention the assessment delta in the user-facing delivery summary. Planned features remain planned until exercised; adding names, models or UI cards does not raise a capability's score.
 
-
 ### Verified delivery: 16 September 2026 — activity and agent work
 
 Delivered channel-filtered actual outreach records, separate provider-backed/simulated counts, queued-versus-attempt distinction, and explicit unavailable delivery/read evidence. Virtual SMS completion status is correctly treated as simulated delivery. The Agent tasks view shows current ownership and dependencies, links to existing controls and isolates legacy follow-ups. Local PostgreSQL dashboard and agent-task endpoints return HTTP 200; the UI was inspected on the current workspace.
@@ -58,13 +57,11 @@ Validation: **208 Node tests passed with PostgreSQL enabled; 24 browser tests pa
 
 Maturity delta: greater visibility and source coverage; no promotion to real-pilot or verified-payments maturity. Canonical task commands and payment reconciliation remain the next executable gaps. Confirmed product scope is collection of Rescova-owned purchased receivables only; third-party remittance is removed from the near-term plan. The original creditor remains separately recorded from Rescova as current owner. Engineering estimate remains approximately 4–8 focused engineering weeks to the defined controlled pilot, subject to provider fit and field validation.
 
-
 ### Presentation refinement — 16 September 2026
 
 Outreach Overview now uses one stacked chart and a compact channel/color legend, with one aggregate external/simulated split. Detailed per-channel status lists and explanatory paragraphs were removed from this summary; backend evidence and task state remain unchanged. This is a presentation refinement with no maturity-score change.
 
 Next concrete delivery: give the existing document-request-to-email workflow one durable parent ticket, linked child work, explicit dependencies, bounded retries and a completion contract based on provider submission evidence. Reuse current workers and email delivery records; do not introduce parallel executors. Demonstrate restart/replay safety, delayed document availability and a contact stop during generation. Payment verification should then reuse this contract once the payment adapter and ledger exist.
-
 
 ### Durable document fulfillment — 16 September 2026
 
@@ -74,21 +71,17 @@ Maturity delta: agent execution remains level 2, with stronger crash/replay/depe
 
 The model/provider-backed happy path is ready for the user's existing browser/Gmail setup; automated verification uses isolated cases and mocked providers. Test procedure: [DOCUMENT_TICKET_TEST.md](DOCUMENT_TICKET_TEST.md). Exact validation results are recorded below after the final run.
 
-
 Final validation for this increment: **222 Node tests passed with PostgreSQL enabled (zero failures/skips), 25 browser tests passed, production build and changed-file formatting/diff checks passed.** Fourteen new ticket scenarios run across SQLite/PostgreSQL. Local PostgreSQL API verified authenticated task access, authentication enforcement and missing-ticket 404 responses. No new real provider send/call was initiated for verification. Parent status and step evidence are visible through the authenticated detail endpoint and the responsive ticket dialog.
-
 
 ### Shared modal spacing — 16 September 2026
 
 Dialog content now receives its outer padding from the shared Modal component, with aligned headers/footers, responsive insets and consistent form-field/grid spacing. Existing component body wrappers no longer add duplicate outer padding. Desktop/mobile ticket and portfolio forms were visually inspected with no horizontal overflow; all 25 browser tests and the production build passed. Presentation only: no workflow or maturity-level change.
-
 
 ### Supervisor loop correction — 16 September 2026
 
 A real local demo exposed 31 supervisor executions after “3 installments please”: payment consent validation called the supervisor referral path again from supervisor/guided jobs, bypassing per-job retry limits. Missing consent for valid sent offers now produces a Marina clarification without supervisor work. A referral guard prevents supervisor/guided jobs from referring back to Rafael, and current resolution transitions synchronize outstanding escalation records. The affected settled conversation's 30 stale queued/guidance records were reconciled to resolved, retaining all 31 executed jobs as history.
 
 Evidence: Node suite 210 passed, 14 skipped (224 total); all 15 payment-agreement tests additionally passed against isolated PostgreSQL schemas. Regression covers two presented offers, selection without consent, subsequent explicit acceptance, repeated worker ticks, supervisor payment rejection and stale escalation state. No new external messages were sent for verification. Live-model conversational retest remains to be done. This fixes a demonstrated reliability defect; maturity scores and estimates stay unchanged. Global agent budgets and broader adversarial workflow evaluations remain gaps; next milestone remains sandbox payment verification and the shared task/outbox/timer layer.
-
 
 ### Payment simulation foundation — 16 September 2026
 
@@ -101,6 +94,24 @@ Evidence: **253 backend tests passed, none skipped**, with TEST_DATABASE_URL ena
 Assessment delta: payment/reconciliation rises from 0 to 2 for controlled simulation, total **18/48**. The demo is more complete, but the prior production-pilot readiness range of 25–35% stays unchanged pending real-provider evidence. This is not a live payment integration or a general autonomous collection strategy. Provider mode/registration activation, signed webhook routing, periodic external reconciliation, unmatched provider-event resolution, expiring payment requests, real notification channels, recurring cadence and operational recovery remain gaps. Rafael's excess-credit/request-failure tasks wait for authorized capabilities; no refund/credit-allocation agent is falsely claimed operational.
 
 Next milestone: choose an eligible payment provider/account and implement its sandbox adapter against the existing contract, including callback verification, ordering/replay tests and reconciliation. Follow with reminder cadence, inbox/outbox migration and production operations. Indicative effort remains scope-dependent: adapter sandbox integration and evidence typically require a focused implementation milestone rather than a platform rewrite; no reliable live date can be assigned before provider/account requirements are known.
+
+### PagBrasil target-provider decision — 18 September 2026
+
+PagBrasil is now the intended Brazil payment provider through Rescova's US legal entity. Activation remains conditional on written approval for collection of purchased receivables owned by Rescova and confirmation of settlement, FX, reserve, refund, dispute and assignment-evidence requirements. The integration must use the existing provider contract and preserve internal provider-neutral financial records.
+
+Assessment delta: no capability level or readiness increase. No PagBrasil account, underwriting approval, sandbox adapter, signed callback or reconciled provider payment has been verified. The next financial milestone is therefore narrower: obtain written eligibility and sandbox access, then implement and test the PagBrasil adapter against payment-link creation, authenticated callbacks, retrieval, replay/order handling, expiry, refund and reconciliation scenarios.
+
+### Agentic architecture alignment — 18 September 2026
+
+The target architecture now makes durable goals, measurable completion, layered memory, bounded planning, mediated atomic actions, feedback loops, risk-based validation, decision logs and resource budgets explicit. It retains the current coordinator, PostgreSQL workers and specialized roles rather than introducing a new framework or unrestricted peer-agent communication. This entry originally introduced Jev as observe-only; the later 19 September entry records the evaluated active decision roles.
+
+Assessment delta: no implementation maturity or readiness increase. Existing durable jobs, role separation, context retrieval, provider adapters, evidence records and retry/idempotency controls align with the target. Material gaps are machine-readable goal and stop contracts, a unified action gateway, end-to-end decision/outcome correlation, explicit memory classes, bounded replanning and global cost/concurrency budgets. These changes should be folded into M2 and M4 rather than built as a separate architecture rewrite.
+
+### Jev integration plan — 19 September 2026
+
+TypeSafe access is available and the project began with a staged Jev plan: shadow inbound triage, routing unresolved work before Rafael and semantic verification of generated replies. The later 19 September entry supersedes the first two planned stages with evaluated active demo behavior. Jev remains a typed decision input to application policy and receives no direct contact, document-release, agreement or payment authority.
+
+Assessment delta at planning time: no capability score or pilot-readiness increase. Implementation evidence is recorded in the latest dated entry below.
 
 ### Agent oversight UI — 16 September 2026
 
@@ -119,3 +130,29 @@ Verification for task timing: 7 backend checks including PostgreSQL timezone-bou
 Retired the Grok comparison test, its runtime/API/WebSocket wiring, dedicated audio assets and Sofia's active registry entry. Clara remains the GPT Live voice agent, Lucas remains the delegated case-tool agent, and browser/Twilio testing is retained. The team map reflects five agents. Historical provider records and recordings remain readable. This reduces maintained surface area; it adds no autonomous capability or production-readiness points. Assessment stays 18/48 and the next functional milestone remains payment-provider sandbox integration.
 
 Verification: 250 backend tests passed with PostgreSQL enabled and no skips; production build passed. Browser verification covers retained voice flows and the revised team map. No provider call was initiated for this cleanup.
+
+### Voice behavior and traceability — 17 September 2026
+
+The September 17 test exposed late identity delegation, repeated ambiguous currency wording and unnecessary plan repetition, despite correct BRL accounting. It also exposed confusion between separately created Ana demo cases. Shared browser/Twilio conversation policy now requests immediate identity delegation and proactive case explanation, returns explicit reais/centavos speech facts, and limits agreement acknowledgment. Caller-requested ending has an idempotent tool and a mutation gate, bounded transport close coordination and exact-case navigation. Debug events correlate backend text/tool calls to source sessions; local transcription has one bounded retry with failure-stage diagnostics.
+
+Evidence: full 258-test backend suite passes with PostgreSQL and no skips; production build passes. Tests cover speech formatting, identity gates, ending mutation gates, backend continuation ordering and timer cleanup/isolation across 1,000 in-memory close controllers. This is **not** a 1,000-call provider benchmark and does not validate pronunciation, latency or conversational quality. Browser regression exercises closing and exact-case routing. A fresh recorded call remains required to accept the voice behavior changes.
+
+Assessment stays **18/48**, voice level **2**, pilot estimate **25–35%**. No readiness increase for prompt changes. Next voice milestone: pass the recorded scenario matrix in VOICE_VALIDATION.md, then production call persistence, distributed admission/rate controls, transport recovery and a provider-backed staged load test. Current voice tests are isolated fixtures with in-memory call state and small hard limits; local serial Whisper is not production transcription. Payment-provider sandbox integration remains the next financial milestone. A defensible estimate for thousands-of-calls operation requires defined concurrency, provider quotas, call duration and measured latency/cost; these changes do not establish that estimate.
+
+### TypeSafe Jev active demo triage — 19 September 2026
+
+Inbound demo SMS and email now create one durable, idempotent `inbound-triage-v1` run behind a provider-neutral `DecisionEngine`. One TypeSafe request batches a primary-intent Choice and six independent Noul judgments. In active mode the reply job waits for triage, records the applied route and supplies its route, confidence and probabilities to Marina. A confidence below 0.75 or provider failure uses Marina fallback. Existing deterministic checks, domain tools, payment state and delivery remain authoritative. Competing workers claim runs atomically and only reclaim expired work.
+
+Evidence: the live 18-case pt-BR/English evaluation passed all primary intents and all six binary labels after tightening dispute/wrong-person criteria. It used Jev 1.13.0, 18,919 input tokens, 3,638 output tokens and averaged 447 ms. A complete synthetic workflow check persisted and applied `payment_options`, then proved Marina received that route. Five focused tests cover batching, deduplication, no duplicate raw text, competing workers, active application, provider fallback and disabled mode. The complete backend suite passes **237 tests with 14 PostgreSQL-dependent skips (251 total)**; production build and diff checks pass.
+
+Assessment delta: capability levels and total stay **18/48**; controlled-pilot readiness stays **25–35%**. Active triage is proven only for simple fictional demo messages. The local active configuration pins the evaluated Jev 1.13.0 model, but the set lacks ambiguous, multi-intent, misspelled and adversarial traffic; outcome labels and drift monitoring are absent. Before non-test use, expand the corpus. The next product step can use the active route to choose read-only specialist paths directly while all external and financial actions remain validated. Payment-provider sandbox integration remains the next financial milestone.
+
+### Three-role Jev decision layer and full local run — 19 September 2026
+
+Lia now resolves explicit stop/wrong-person messages and holds reported payments without a Marina generation. Bento chooses and preloads the most relevant case source before Marina. Tiago maps routine unresolved work to an explicit dependency state before Rafael; low confidence, provider failure and genuinely complex reasoning still fall back to Rafael. All mutations, suppression, financial truth and delivery remain deterministic application responsibilities. The Agent directory and collaboration map show the three decision roles and their information flow. Waiting resolutions record the actual owner, so Tiago work is not presented as Rafael work.
+
+Evidence: the live Jev 1.13.0 corpus passed **18/18 intents, 18/18 context routes, all critical flags and 10/10 escalation routes** across English and pt-BR. Average observed latency was 500 ms for the eight-question inbound batch and 483 ms for the two-question resolution batch. The full backend suite passed **240 tests with 14 PostgreSQL-dependent skips (254 total)**; formatting and production build passed. A locally started UI test answered the fictional creditor question “What bank…” correctly after a `decision.context_preloaded` event, then handled “I already paid … by Pix” with no additional Marina or Rafael model run. Tiago became owner of the payment-verification wait. No external SMS, email, call or payment was initiated.
+
+Token impact is structurally positive but not yet a production cost claim: Lia removed one conversation-model call from the payment-report path; Tiago removed one supervisor-model call; Bento reduced the creditor question to one Marina generation instead of a possible lookup-generation round plus final generation. Jev usage for the 18-message evaluation was 23,149 input and 4,854 output tokens. Comparative cost per resolved case, fallback frequency and drift still need representative traffic and provider pricing.
+
+Assessment delta: total remains **18/48** and controlled-pilot readiness remains **25–35%**. The new layer improves routing efficiency and ownership accuracy, but the corpus is small and synthetic. The highest-value next milestone remains the PagBrasil sandbox adapter plus signed callback ingestion and reconciliation against the existing payment ledger. It turns Tiago's current `awaiting_specialist` payment state into a closed automated feedback loop. In parallel, expand Jev evaluation with noisy, multi-intent and adversarial Portuguese messages before any real-debtor activation.
